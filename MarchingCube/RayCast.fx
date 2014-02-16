@@ -229,7 +229,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		P += PsmallStep;
 		t += tSmallStep;
 	}
-	return float4( 1, 1, 1, 0 ) * 0.00;       
+	return float4( 1, 1, 1, 0 ) * 0.05;       
 }
 
 

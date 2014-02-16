@@ -7,23 +7,24 @@
 //--------------------------------------------------------------------------------------
 #include "DXUT.h"
 
-#define SUB_TEXTUREWIDTH 1024
-#define SUB_TEXTUREHEIGHT 768
+#define SUB_TEXTUREWIDTH 800
+#define SUB_TEXTUREHEIGHT 600
 
-#define VOXEL_SIZE  1.0f / 128
-#define VOXEL_NUM_X 256
-#define VOXEL_NUM_Y 256
-#define VOXEL_NUM_Z 128
+#define VOXEL_SIZE  1.0f / 64
+#define VOXEL_NUM_X 128
+#define VOXEL_NUM_Y 128
+#define VOXEL_NUM_Z 64
 
 
 #include "MultiTexturePresenter.h"
 #include "DensityFuncVolume.h"
 #include "RayCast.h"
+#include "HistoPyramidMC.h"
 
-MultiTexturePresenter			multiTexture = MultiTexturePresenter( 3, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
+MultiTexturePresenter			multiTexture = MultiTexturePresenter( 2, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
 DensityFuncVolume				densityVolume = DensityFuncVolume( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z );
 RayCast							rayCaster = RayCast( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, true );
-
+HistoPyramidMC					marchingCube = HistoPyramidMC(XMFLOAT4(VOXEL_NUM_X * VOXEL_SIZE, VOXEL_NUM_Y * VOXEL_SIZE, VOXEL_NUM_Z * VOXEL_SIZE,1));
 
 //--------------------------------------------------------------------------------------
 //Initialization
@@ -64,7 +65,9 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	HRESULT hr = S_OK;
 	V_RETURN( densityVolume.CreateResource ( pd3dDevice ));
 	V_RETURN( rayCaster.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
-	V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV ));
+	V_RETURN( marchingCube.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
+	//V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV));
+	V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV, marchingCube.m_pOutSRV ));
     return S_OK;
 }
 
@@ -77,6 +80,7 @@ HRESULT CALLBACK OnD3D11ResizedSwapChain( ID3D11Device* pd3dDevice, IDXGISwapCha
 {
 	multiTexture.Resize();
 	rayCaster.Resize();
+	marchingCube.Resize();
     return S_OK;
 }
 
@@ -88,6 +92,7 @@ void CALLBACK OnFrameMove( double fTime, float fElapsedTime, void* pUserContext 
 {
 	densityVolume.Update( fTime, fElapsedTime );
 	rayCaster.Update( fElapsedTime );
+	marchingCube.Update( fElapsedTime );
 }
 
 
@@ -98,6 +103,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
                                   double fTime, float fElapsedTime, void* pUserContext )
 {
     densityVolume.Render( pd3dImmediateContext );
+	marchingCube.Render( pd3dImmediateContext );
     rayCaster.Render( pd3dImmediateContext );
 	multiTexture.Render( pd3dImmediateContext );
 }
@@ -118,6 +124,7 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 {
 	multiTexture.Release();
 	rayCaster.Release();
+	marchingCube.Release();
 	densityVolume.Release();
 }
 
@@ -130,6 +137,7 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 {
 	densityVolume.HandleMessages( hWnd, uMsg, wParam, lParam );
 	rayCaster.HandleMessages( hWnd, uMsg, wParam, lParam );
+	marchingCube.HandleMessages( hWnd, uMsg, wParam, lParam );
     return 0;
 }
 
