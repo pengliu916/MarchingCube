@@ -8,7 +8,7 @@
 #include "DXUT.h"
 
 #define SUB_TEXTUREWIDTH 800
-#define SUB_TEXTUREHEIGHT 600
+#define SUB_TEXTUREHEIGHT 800
 
 #define VOXEL_SIZE  1.0f / 64
 #define VOXEL_NUM_X 128
@@ -67,6 +67,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	V_RETURN( rayCaster.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	V_RETURN( marchingCube.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	//V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV));
+	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
 	V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV, marchingCube.m_pOutSRV ));
     return S_OK;
 }

@@ -83,6 +83,9 @@ float4 PS( PS_INPUT input ) : SV_Target
 {
 	float4 field = float4(0,1,1,1);
 	float3 currentPos = input.Coord;
+	//if(abs(currentPos.x)<0.3 && abs(currentPos.y)<0.3 && abs(currentPos.z)<0.3 ) field.x=2;
+	//if(abs(currentPos.x)+abs(currentPos.y)+abs(currentPos.z)<0.5) field.x=2;
+	
 	for( uint i = 0; i < (uint)numOfBalls; i++ ){
 		float density =  Ball( currentPos, balls[i].xyz, balls[i].w  );
 		field.x += density;

@@ -19,8 +19,8 @@ struct CB_HPMC
 {
 	XMFLOAT4	cubeInfo;// xyz reso on xyz component, voxel size on w component
 	XMFLOAT4	volSize;// 1.0f / (voxelRes * voxelSize); isolevel in w component
+	XMFLOAT4	viewPos;
 	XMMATRIX	mWorldViewProj;
-	XMMATRIX	mInvView;
 };
 class HistoPyramidMC
 {
@@ -41,6 +41,7 @@ public:
 	ID3D11Texture2D*				m_pOutDSTex;// Output image depth buffer
 	ID3D11DepthStencilView*			m_pOutDSSView;// Output image depth stencil view
 	ID3D11DepthStencilState*		m_pOutDSState;// Output Depth Stencil State
+	ID3D11RasterizerState*			m_pOutRS;// Output rasterizer state
 
 	// Resource for HPMC pass
 	ID3D11VertexShader*				m_pVS;
@@ -218,6 +219,21 @@ public:
 		V_RETURN(pd3dDevice->CreateSamplerState( &sampDesc, &m_pSS_Linear ));
 		DXUT_SetDebugName(m_pSS_Linear,"m_pSS_Linear");
 
+		// rasterizer state
+		D3D11_RASTERIZER_DESC rsDesc;
+		rsDesc.FillMode = D3D11_FILL_WIREFRAME;
+		rsDesc.CullMode = D3D11_CULL_NONE;
+		rsDesc.FrontCounterClockwise = FALSE;
+		rsDesc.DepthBias = 0;
+		rsDesc.DepthBiasClamp = 0.0f;
+		rsDesc.SlopeScaledDepthBias = 0.0f;
+		rsDesc.DepthClipEnable = TRUE;
+		rsDesc.ScissorEnable = FALSE;
+		rsDesc.MultisampleEnable = FALSE;
+		rsDesc.AntialiasedLineEnable = FALSE;
+		V_RETURN(pd3dDevice->CreateRasterizerState(&rsDesc, &m_pOutRS));
+		DXUT_SetDebugName(m_pOutRS,"m_pOutRS");
+
 		m_Viewport.Width = (float)m_uRTwidth ;
 		m_Viewport.Height = (float)m_uRTheight;
 		m_Viewport.MinDepth = 0.0f;
@@ -252,6 +268,7 @@ public:
 		SAFE_RELEASE( m_pOutTex );
 		SAFE_RELEASE( m_pOutSRV );
 		SAFE_RELEASE( m_pOutRTV );
+		SAFE_RELEASE( m_pOutRS );
 
 		SAFE_RELEASE( m_pOutDSTex );
 		SAFE_RELEASE( m_pOutDSSView );
@@ -275,7 +292,7 @@ public:
 		XMVECTOR t;
 
 		m_cbPerFrame.mWorldViewProj = XMMatrixTranspose( m_WorldViewProjection );
-		m_cbPerFrame.mInvView = XMMatrixTranspose(XMMatrixInverse(&t,m_View));
+		XMStoreFloat4(&m_cbPerFrame.viewPos, m_Camera.GetEyePt());
 		pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC, 0, NULL, &m_cbPerFrame, 0, 0 );
 		
 		float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -295,11 +312,16 @@ public:
 		pd3dImmediateContext->PSSetShader( m_pPS, NULL, 0 );
 		pd3dImmediateContext->GSSetShader( m_pGS, NULL, 0 );
 		pd3dImmediateContext->GSSetConstantBuffers( 0, 1, &m_pCB_HPMC );
+		pd3dImmediateContext->PSSetConstantBuffers( 0, 1, &m_pCB_HPMC );
 		pd3dImmediateContext->GSSetSamplers( 0, 1, &m_pSS_Linear );
 		pd3dImmediateContext->GSSetShaderResources( 0, 1, &m_pVolSRV);
+		//ID3D11RasterizerState* rs;
+		//pd3dImmediateContext->RSGetState(&rs);
+		//pd3dImmediateContext->RSSetState(m_pOutRS);
 
 		pd3dImmediateContext->Draw( m_cbPerFrame.cubeInfo.x * m_cbPerFrame.cubeInfo.y * m_cbPerFrame.cubeInfo.z, 0 );
-
+		//pd3dImmediateContext->RSSetState(rs);
+		//SAFE_RELEASE( rs );
 		ID3D11ShaderResourceView* pSRVNULL = NULL;
 		pd3dImmediateContext->GSSetShaderResources( 0, 1, &pSRVNULL);
 	}
