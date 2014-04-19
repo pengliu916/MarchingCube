@@ -1,5 +1,10 @@
+#include "Header.h"
 SamplerState g_sampler : register(s0);
+#if FLAT3D
+Texture2D g_txVolume : register(t0);
+#else
 Texture3D g_txVolume : register(t0);
+#endif
 
 static const float3 aLight_col = float3( 0.01, 0.01, 0.01 );
 static const float3 dLight_col = float3( 0.02, 0.02, 0.02 );
@@ -15,6 +20,10 @@ cbuffer cubeInfo : register( b0 )
 	float4 cb_f4VolSize; // size of volume in object space;isolevel in .w conponent
 	float4 cb_f4ViewPos;
 	matrix cb_mWorldViewProj;
+#if FLAT3D
+	float4 voxelInfo;// information about the volume texture
+	int2 tile_num;//# of tile in x,y dimension of the flat3D texture
+#endif
 };
 
 cbuffer cbImmutable
@@ -362,6 +371,29 @@ PS_INPUT CalIntersectionVertex(VertexInfo Data0, VertexInfo Data1)
 	return output;
 }
 
+#if FLAT3D
+float4 samFlat3D( float3 P) // P is the 3D coordinate in local space
+{
+	float3 fVoxel_idx = P / voxelInfo.w + voxelInfo.xyz * 0.5 - float3(0,0,0.5);
+	int z0_idx = floor(fVoxel_idx.z);
+	int z1_idx = ceil(fVoxel_idx.z);
+	int2 tile_idx = int2(z0_idx % tile_num.x, z0_idx / tile_num.y);
+	float2 texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result0 = g_txVolume.SampleLevel(g_sampler, texCoord, 0);
+	tile_idx = int2(z1_idx % tile_num.x, z1_idx / tile_num.y);
+	texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result1 = g_txVolume.SampleLevel(g_sampler, texCoord, 0);
+	float s = (fVoxel_idx.z - z0_idx) / (z1_idx - z0_idx);
+	return lerp(result0,result1,s);
+}
+float3 CalNormal( float3 P)// P is the 3D coordinate in local space
+{
+	float depth_dx = samFlat3D(P+voxelInfo.w*float3 ( 1, 0, 0 )).x - samFlat3D(P+voxelInfo.w*float3 ( -1, 0, 0 )).x;
+	float depth_dy = samFlat3D(P+voxelInfo.w*float3 ( 0, 1, 0 )).x - samFlat3D(P+voxelInfo.w*float3 ( 0, -1, 0 )).x;
+	float depth_dz = samFlat3D(P+voxelInfo.w*float3 ( 0, 0, 1 )).x - samFlat3D(P+voxelInfo.w*float3 ( 0, 0, -1 )).x;
+	return -normalize ( float3 ( depth_dx, depth_dy, depth_dz ) );
+}
+#else
 float3 CalNormal( float3 txCoord )// Compute the normal from gradient
 {
 	float depth_dx = g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 1, 0, 0 ) ).x -
@@ -373,7 +405,7 @@ float3 CalNormal( float3 txCoord )// Compute the normal from gradient
 	return -normalize( float3 ( depth_dx, depth_dy, depth_dz ) );
 
 }
-
+#endif
 //--------------------------------------------------------------------------------------
 // Vertex Shader
 //--------------------------------------------------------------------------------------
@@ -399,18 +431,25 @@ void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Triangl
 	currentIdx.y = (primID % (uint)(cb_f4CubeInfo.x * cb_f4CubeInfo.y)) / (uint)cb_f4CubeInfo.x;
 	currentIdx.x = primID % (uint)(cb_f4CubeInfo.x * cb_f4CubeInfo.y) % (uint)cb_f4CubeInfo.x;
 	float3 pos = (currentIdx - 0.5 * cb_f4CubeInfo.xyz) * cb_f4CubeInfo.w;// Convert to object space
-	float3 volTexCoord = pos / cb_f4VolSize.xyz + 0.5;// Convert to volume texture space [0,0,0]-[1,1,1]
 	//float3 halfCube = 0;
-	float3 halfCube = 0.5f * cb_f4CubeInfo.w / cb_f4VolSize.xyz;
 
 	float4 fieldData[8];
 	float3 fieldNormal[8];
+#if FLAT3D
+	[unroll] for( int i = 0; i < 8; ++i ){
+		float3 P = pos + cb_f4CubeInfo.w * cb_halfCubeOffset[i]*0.5;
+		fieldData[i] = samFlat3D(P);
+		fieldNormal[i] = CalNormal(P);
+	}
+#else
+	float3 volTexCoord = pos / cb_f4VolSize.xyz + 0.5;// Convert to volume texture space [0,0,0]-[1,1,1]
+	float3 halfCube = 0.5f * cb_f4CubeInfo.w / cb_f4VolSize.xyz;
 	[unroll] for( int i = 0; i < 8; ++i ){
 		float3 idx = volTexCoord + halfCube * cb_halfCubeOffset[i];
 		fieldData[i] = g_txVolume.SampleLevel(g_sampler, idx, 0);
 		fieldNormal[i] = CalNormal( idx );
 	}
-
+#endif
 	uint caseIdx =	(uint(fieldData[7].x > cb_f4VolSize.w) << 7) | (uint(fieldData[6].x > cb_f4VolSize.w) << 6) |
 					(uint(fieldData[5].x > cb_f4VolSize.w) << 5) | (uint(fieldData[4].x > cb_f4VolSize.w) << 4) |
 					(uint(fieldData[3].x > cb_f4VolSize.w) << 3) | (uint(fieldData[2].x > cb_f4VolSize.w) << 2) |
@@ -434,7 +473,7 @@ void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Triangl
 		v1.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 
-		endPoints = cb_edgeTable[edges.y];
+		endPoints = cb_edgeTable[edges.z];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
 		v0.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
@@ -443,7 +482,7 @@ void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Triangl
 		v1.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 
-		endPoints = cb_edgeTable[edges.z];
+		endPoints = cb_edgeTable[edges.y];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
 		v0.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
@@ -453,23 +492,6 @@ void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Triangl
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 		triStream.RestartStrip();
 	}
-
-	//float4 centralPos = float4(pos,1);
-	////float4 centralPos = float4(currentIdx - 0.5f, 1) * cb_f4VolSize;
-	//centralPos.w = 1;
-
-	//float4 color = (fieldData[0] + fieldData[1] + fieldData[2] + fieldData[3] + fieldData[4] + fieldData[5] + fieldData[6] + fieldData[7]) / 8.0f;
-	//color.rgb = color.yzw;
-
-	//for( int i = 0; i < 4; i++ ){
-	//	float3 position = cb_quadPos[i] * cb_f4CubeInfo.w*0.2;
-	//	position = mul( position, (float3x3)cb_mInvView ) + centralPos;
-	//	output.Pos = mul( float4( position, 1.0 ), cb_mWorldViewProj );
-
-	//	output.Col = color;
-	//	triStream.Append( output );
-	//}
-	//triStream.RestartStrip();
 }
 
 

@@ -11,6 +11,7 @@
     <ClInclude Include="RayCast.h" />
     <ClInclude Include="MultiTexturePresenter.h" />
     <ClInclude Include="HistoPyramidMC.h" />
+    <ClInclude Include="Header.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

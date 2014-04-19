@@ -7,10 +7,9 @@
 #include "SDKmisc.h"
 #include <iostream>
 
-#define frand() ((float)rand()/RAND_MAX)
+#include "Header.h"
 
-#define MAX_BALLS	150
-#define BALL_VOLUME_FACTOR 0.5f
+#define frand() ((float)rand()/RAND_MAX)
 
 using namespace DirectX;
 using namespace std;
@@ -33,6 +32,12 @@ struct CB_VolumeInfo
 	UINT voxel_y;
 	UINT voxel_z;
 	float voxel_size;
+#if FLAT3D
+	UINT tile_x;
+	UINT tile_y;
+	int dummy0;
+	int dummy1;
+#endif
 };
 
 struct CB_Balls
@@ -53,8 +58,11 @@ public:
 	ID3D11GeometryShader*			m_pGS;
 	ID3D11InputLayout*				m_pVL;
 	ID3D11Buffer*					m_pVB;
-
+#if FLAT3D
+	ID3D11Texture2D*				m_pVolTex;
+#else
 	ID3D11Texture3D*				m_pVolTex;
+#endif
 	ID3D11ShaderResourceView*		m_pVolSRV;
 	ID3D11RenderTargetView*			m_pVolRTV;
 
@@ -137,6 +145,10 @@ public:
 		m_fBallsVolumeSize = m_fVolumeSize * BALL_VOLUME_FACTOR;
 		m_dTime = 0;
 
+#if FLAT3D
+		m_cbVolumeInfo.tile_x = (UINT)ceil(sqrt(depth));
+		m_cbVolumeInfo.tile_y = (UINT)ceil(sqrt(depth));
+#endif
 		for( int i = 0; i < 20; i++ )
 			AddBall();
 	}
@@ -173,7 +185,11 @@ public:
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory( &bd, sizeof(bd) );
 		bd.Usage = D3D11_USAGE_DEFAULT;
+#if FLAT3D
+		bd.ByteWidth = sizeof( short );
+#else
 		bd.ByteWidth = sizeof( short )*m_cbVolumeInfo.voxel_z;
+#endif
 		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 		bd.CPUAccessFlags = 0;
 		V_RETURN(pd3dDevice->CreateBuffer(&bd,NULL,&m_pVB));
@@ -196,6 +212,39 @@ public:
 
 
 		// Create the texture
+#if FLAT3D
+		D3D11_TEXTURE2D_DESC dstex;
+		ZeroMemory( &dstex, sizeof(dstex));
+		dstex.Width = m_cbVolumeInfo.voxel_x*m_cbVolumeInfo.tile_x;
+		dstex.Height = m_cbVolumeInfo.voxel_y*m_cbVolumeInfo.tile_y;
+		dstex.MipLevels = 1;
+		dstex.ArraySize = 1;
+		dstex.SampleDesc.Count = 1;
+		dstex.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		dstex.Usage = D3D11_USAGE_DEFAULT;
+		dstex.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+		dstex.CPUAccessFlags = 0;
+		dstex.MiscFlags = 0;
+		V_RETURN( pd3dDevice->CreateTexture2D( &dstex, NULL, &m_pVolTex ))
+		DXUT_SetDebugName(m_pVolTex,"m_pVolTex");
+
+		D3D11_RENDER_TARGET_VIEW_DESC		RTVDesc;
+		ZeroMemory( &RTVDesc, sizeof(RTVDesc));
+		RTVDesc.Format = dstex.Format;
+		RTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		RTVDesc.Texture2D.MipSlice = 0;
+		V_RETURN(pd3dDevice->CreateRenderTargetView(m_pVolTex, &RTVDesc,&m_pVolRTV));
+		DXUT_SetDebugName(m_pVolRTV,"m_pVolRTV");
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC		SRViewDesc;
+		ZeroMemory( &SRViewDesc, sizeof(SRViewDesc));
+		SRViewDesc.Format = dstex.Format;
+		SRViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		SRViewDesc.Texture2D.MostDetailedMip = 0;
+		SRViewDesc.Texture2D.MipLevels = 1;
+		V_RETURN(pd3dDevice->CreateShaderResourceView(m_pVolTex, &SRViewDesc, &m_pVolSRV));
+		DXUT_SetDebugName(m_pVolSRV,"m_pVolSRV");
+#else
 		D3D11_TEXTURE3D_DESC dstex;
 		dstex.Width = m_cbVolumeInfo.voxel_x;
 		dstex.Height = m_cbVolumeInfo.voxel_y;
@@ -228,12 +277,18 @@ public:
 		RTVDesc.Texture3D.WSize = m_cbVolumeInfo.voxel_z;
 		V_RETURN( pd3dDevice->CreateRenderTargetView( m_pVolTex, &RTVDesc, &m_pVolRTV ));
 		DXUT_SetDebugName(m_pVolRTV,"m_pVolRTV");
+#endif
 
 		// set the new viewport
 		m_cViewport.TopLeftX = 0;
 		m_cViewport.TopLeftY = 0;
+#if FLAT3D
+		m_cViewport.Width = (float)m_cbVolumeInfo.voxel_x * m_cbVolumeInfo.tile_x;
+		m_cViewport.Height = (float)m_cbVolumeInfo.voxel_y * m_cbVolumeInfo.tile_y;
+#else
 		m_cViewport.Width = (float)m_cbVolumeInfo.voxel_x;
 		m_cViewport.Height = (float)m_cbVolumeInfo.voxel_y;
+#endif
 		m_cViewport.MinDepth = 0.0f;
 		m_cViewport.MaxDepth = 1.0f;
 
@@ -293,8 +348,12 @@ public:
 		pd3dImmediateContext->PSSetShader( m_pPS, NULL, 0 );
 		pd3dImmediateContext->GSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
 		pd3dImmediateContext->PSSetConstantBuffers( 1, 1, &m_pCB_Balls );
-
+#if FLAT3D
+		pd3dImmediateContext->PSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
+		pd3dImmediateContext->Draw( 1, 0);
+#else
 		pd3dImmediateContext->Draw(m_cbVolumeInfo.voxel_z, 0);
+#endif
 	}
 
 	LRESULT HandleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)

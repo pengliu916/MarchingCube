@@ -6,14 +6,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 //--------------------------------------------------------------------------------------
 #include "DXUT.h"
+#include "Header.h"
 
-#define SUB_TEXTUREWIDTH 800
-#define SUB_TEXTUREHEIGHT 800
-
-#define VOXEL_SIZE  1.0f / 64
-#define VOXEL_NUM_X 128
-#define VOXEL_NUM_Y 128
-#define VOXEL_NUM_Z 64
 
 
 #include "MultiTexturePresenter.h"
@@ -21,10 +15,10 @@
 #include "RayCast.h"
 #include "HistoPyramidMC.h"
 
-MultiTexturePresenter			multiTexture = MultiTexturePresenter( 2, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
+MultiTexturePresenter			multiTexture = MultiTexturePresenter( 1, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
 DensityFuncVolume				densityVolume = DensityFuncVolume( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z );
 RayCast							rayCaster = RayCast( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, true );
-HistoPyramidMC					marchingCube = HistoPyramidMC(XMFLOAT4(VOXEL_NUM_X * VOXEL_SIZE, VOXEL_NUM_Y * VOXEL_SIZE, VOXEL_NUM_Z * VOXEL_SIZE,1));
+HistoPyramidMC					marchingCube = HistoPyramidMC(XMFLOAT4(VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, VOXEL_SIZE));
 
 //--------------------------------------------------------------------------------------
 //Initialization
@@ -67,8 +61,8 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	V_RETURN( rayCaster.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	V_RETURN( marchingCube.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	//V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV));
-	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
-	V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV, marchingCube.m_pOutSRV ));
+	V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
+	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV, rayCaster.m_pOutputSRV ));
     return S_OK;
 }
 
@@ -105,7 +99,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 {
     densityVolume.Render( pd3dImmediateContext );
 	marchingCube.Render( pd3dImmediateContext );
-    rayCaster.Render( pd3dImmediateContext );
+    //rayCaster.Render( pd3dImmediateContext );
 	multiTexture.Render( pd3dImmediateContext );
 }
 

@@ -37,13 +37,13 @@ void GS_1(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Trian
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(1.0f,1.0f,0.01f,1.0f);
-	output.Tex=float2(1.0f,0.0f);
+	output.Pos=float4(-1.0f,-1.0f,0.01f,1.0f);
+	output.Tex=float2(0.0f,1.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(-1.0f,-1.0f,0.01f,1.0f);
-	output.Tex=float2(0.0f,1.0f);
+	output.Pos=float4(1.0f,1.0f,0.01f,1.0f);
+	output.Tex=float2(1.0f,0.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 
@@ -63,13 +63,13 @@ void GS_2(point GS_INPUT particles[1],uint primID : SV_PrimitiveID, inout Triang
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(0.0f+offset,1.0f,0.01f,1.0f);
-	output.Tex=float2(1.0f,0.0f);
+	output.Pos=float4(-1.0f+offset,-1.0f,0.01f,1.0f);
+	output.Tex=float2(0.0f,1.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(-1.0f+offset,-1.0f,0.01f,1.0f);
-	output.Tex=float2(0.0f,1.0f);
+	output.Pos=float4(0.0f+offset,1.0f,0.01f,1.0f);
+	output.Tex=float2(1.0f,0.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 
@@ -89,13 +89,13 @@ void GS_4(point GS_INPUT particles[1],uint primID : SV_PrimitiveID, inout Triang
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(0.0f+primID%2,1.0f-primID/2,0.01f,1.0f);
-	output.Tex=float2(1.0f,0.0f);
+	output.Pos=float4(-1.0f+primID%2,0.0f-primID/2,0.01f,1.0f);
+	output.Tex=float2(0.0f,1.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 
-	output.Pos=float4(-1.0f+primID%2,0.0f-primID/2,0.01f,1.0f);
-	output.Tex=float2(0.0f,1.0f);
+	output.Pos=float4(0.0f+primID%2,1.0f-primID/2,0.01f,1.0f);
+	output.Tex=float2(1.0f,0.0f);
 	output.PrimID=primID;
 	triStream.Append(output);
 

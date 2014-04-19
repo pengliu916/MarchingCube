@@ -26,6 +26,8 @@ public:
 	ID3D11RenderTargetView*			m_pOutputTextureRTV;
 	ID3D11ShaderResourceView*		m_pOutputTextureRV;
 
+	ID3D11RasterizerState*			m_pOutRS;// Output rasterizer state
+
 	D3D11_VIEWPORT					m_RTviewport;
 
 	CModelViewerCamera*				m_pVCamera[6];
@@ -230,6 +232,21 @@ public:
 		sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
 		V_RETURN(pd3dDevice->CreateSamplerState(&sampDesc, &m_pGeneralTextureSS ));
 		
+		// rasterizer state
+		D3D11_RASTERIZER_DESC rsDesc;
+		rsDesc.FillMode = D3D11_FILL_SOLID;
+		rsDesc.CullMode = D3D11_CULL_BACK;
+		rsDesc.FrontCounterClockwise = TRUE;
+		rsDesc.DepthBias = 0;
+		rsDesc.DepthBiasClamp = 0.0f;
+		rsDesc.SlopeScaledDepthBias = 0.0f;
+		rsDesc.DepthClipEnable = TRUE;
+		rsDesc.ScissorEnable = FALSE;
+		rsDesc.MultisampleEnable = FALSE;
+		rsDesc.AntialiasedLineEnable = FALSE;
+		V_RETURN(pd3dDevice->CreateRasterizerState(&rsDesc, &m_pOutRS));
+		DXUT_SetDebugName(m_pOutRS, "m_pOutRS");
+
 		return hr;
 	}
 
@@ -262,6 +279,7 @@ public:
 		pd3dImmediateContext->PSSetShaderResources(0, m_uTextureNumber, m_pInputTextureRV);
 		pd3dImmediateContext->PSSetSamplers(0,1,&m_pGeneralTextureSS);
 		pd3dImmediateContext->RSSetViewports(1, &m_RTviewport);
+		pd3dImmediateContext->RSSetState(m_pOutRS);
 
 		
 		 
@@ -335,6 +353,7 @@ public:
 			SAFE_RELEASE(m_pOutputTextureRTV);
 			SAFE_RELEASE(m_pOutputTextureRV);
 		}
+		SAFE_RELEASE(m_pOutRS);// Output rasterizer state
 	}
 
 	LRESULT HandleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
