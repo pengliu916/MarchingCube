@@ -1,37 +1,9 @@
 #include "Header.h"
-//-------------------------------------------------
-// The comments assume VOXEL_NUM_X=256
-//-------------------------------------------------
-
-// The linear sampler only used for reading the input volume data
-SamplerState g_samLinear : register(s0);
-
-// For building the HP base, and traversal. This is the input volume
-Texture3D<float4> g_txVolume : register(t0);
-
-// For building the HistoPyramid, in the reduction process, serves and input
-Texture3D<uint> g_txHPLayer : register(t1);
-
-// For traveral HP, the below are 3D texture objects in decreasing reso order
-// We don't need the pyramid's top (1^3 texture3D), so the pyramid of 3d texture
-// objects include 2^3 reso to the very base original reso one.
-Texture3D<uint> g_txHP0 : register(t2);// HP base level 0, contain MC cell case number
-Texture3D<uint> g_txHP1 : register(t3);// HP level1, and as all listed below contains number of active cells of the previous level
-Texture3D<uint> g_txHP2 : register(t4);// HP level2
-Texture3D<uint> g_txHP3 : register(t5);// HP level3
-Texture3D<uint> g_txHP4 : register(t6);// HP level4
-Texture3D<uint> g_txHP5 : register(t7);// HP level5
-#if VOXEL_NUM_X > 64
-Texture3D<uint> g_txHP6 : register(t8);// HP level6
-#endif
-#if VOXEL_NUM_X > 128
-Texture3D<uint> g_txHP7 : register(t9);// HP level7, the pyramid second Top, reso:2^3. We don't need the top
-#endif
-#if VOXEL_NUM_X > 256
-Texture3D<uint> g_txHP8 : register(t10);
-#endif
-#if VOXEL_NUM_X > 512
-Texture3D<uint> g_txHP9 : register(t11);
+SamplerState g_sampler : register(s0);
+#if FLAT3D
+Texture2D g_txVolume : register(t0);
+#else
+Texture3D g_txVolume : register(t0);
 #endif
 
 static const float3 aLight_col = float3( 0.01, 0.01, 0.01 );
@@ -42,30 +14,20 @@ static const float3 pLight_col = float3( 1, 1, 1 )*0.1;
 //--------------------------------------------------------------------------------------
 // Buffers
 //--------------------------------------------------------------------------------------
-cbuffer initial : register( b0 ){
-	float4 cb_f4HPMCInfo;// # of cubes along x,y,z in .xyz conponents, .w is cube size
-	float4 cb_f4VolInfo; // size of volume in object space;isolevel in .w conponent
-};
-cbuffer perFrame : register( b1 ){
+cbuffer cubeInfo : register( b0 )
+{
+	float4 cb_f4CubeInfo;// # of cubes along x,y,z in .xyz conponents, .w is cube size
+	float4 cb_f4VolSize; // size of volume in object space;isolevel in .w conponent
 	float4 cb_f4ViewPos;
 	matrix cb_mWorldViewProj;
+#if FLAT3D
+	float4 voxelInfo;// information about the volume texture
+	int2 tile_num;//# of tile in x,y dimension of the flat3D texture
+#endif
 };
-cbuffer perReduction : register( b2 ){
-	int4 cb_i4RTReso;
-};
+
 cbuffer cbImmutable
 {
-	static const int3 cb_QuadrantOffset[8] =
-	{
-		int3( 0, 0, 0),
-		int3( 1, 0, 0),
-		int3( 0, 1, 0),
-		int3( 1, 1, 0),
-		int3( 0, 0, 1),
-		int3( 1, 0, 1),
-		int3( 0, 1, 1),
-		int3( 1, 1, 1),
-	};
 	static const float3 cb_quadPos[4] =
 	{
 		float3( -1, 1, 0 ),
@@ -370,32 +332,25 @@ cbuffer cbImmutable
 		{  4,  5 }, {  5,  6 }, {  6,  7 }, {  7,  4 },
 		{  0,  4 }, {  1,  5 }, {  2,  6 }, {  3,  7 }
 	};
-};
+}
 
 //--------------------------------------------------------------------------------------
 // Structures
 //--------------------------------------------------------------------------------------
-struct PassVS_OUT{
+struct GS_INPUT
+{
 };
 
-struct ShadingPS_IN{
+struct PS_INPUT
+{
 	float4	Pos : SV_POSITION;
 	float3	Nor : NORMAL0;
 	float4	Col : COLOR0;
 	float4	Pos_o : NORMAl1;
 };
-//struct SliceNorGS_OUT{
-//	float4 SV_Pos : SV_POSITION;
-//	float4 VolCoord : NORMAL0;
-//};
 
-struct SliceGS_OUT{
-	float4 SV_Pos : SV_POSITION;
-	float4 VolCoord : NORMAL0;
-	uint SliceIdx : SV_RenderTargetArrayIndex;
-};
-
-struct VertexInfo{
+struct VertexInfo
+{
 	float4 Field;
 	float3 Pos;
 	float3 Nor;
@@ -403,210 +358,106 @@ struct VertexInfo{
 //--------------------------------------------------------------------------------------
 // Utility Funcs
 //--------------------------------------------------------------------------------------
-ShadingPS_IN CalIntersectionVertex(VertexInfo Data0, VertexInfo Data1){
-	ShadingPS_IN output;
-	float t = (cb_f4VolInfo.w - Data0.Field.x) / (Data1.Field.x - Data0.Field.x);
+PS_INPUT CalIntersectionVertex(VertexInfo Data0, VertexInfo Data1)
+{
+	PS_INPUT output;
+	float t = (cb_f4VolSize.w - Data0.Field.x) / (Data1.Field.x - Data0.Field.x);
 	output.Pos_o = float4(Data0.Pos + t * (Data1.Pos - Data0.Pos), 1);
+	//output.Pos = float4((Data0.Pos + Data1.Pos)*0.5, 1);
 	output.Pos = mul( output.Pos_o, cb_mWorldViewProj );
 	output.Nor = normalize(Data0.Nor + t * (Data1.Nor - Data0.Nor));
+	//output.Col = float4(1,1,1,1);
 	output.Col = float4(Data0.Field.yzw + t * (Data1.Field.yzw - Data0.Field.yzw),1);
 	return output;
 }
 
-float3 CalNormal( float3 txCoord ){// Compute the normal from gradient
-	float depth_dx = g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( 1, 0, 0 ) ).x -
-		g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( -1, 0, 0 ) ).x;
-	float depth_dy = g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( 0, 1, 0 ) ).x -
-		g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( 0, -1, 0 ) ).x;
-	float depth_dz = g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( 0, 0, 1 ) ).x -
-		g_txVolume.SampleLevel( g_samLinear, txCoord, 0, int3 ( 0, 0, -1 ) ).x;
+#if FLAT3D
+float4 samFlat3D( float3 P) // P is the 3D coordinate in local space
+{
+	float3 fVoxel_idx = P / voxelInfo.w + voxelInfo.xyz * 0.5 - float3(0,0,0.5);
+	int z0_idx = floor(fVoxel_idx.z);
+	int z1_idx = ceil(fVoxel_idx.z);
+	int2 tile_idx = int2(z0_idx % tile_num.x, z0_idx / tile_num.y);
+	float2 texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result0 = g_txVolume.SampleLevel(g_sampler, texCoord, 0);
+	tile_idx = int2(z1_idx % tile_num.x, z1_idx / tile_num.y);
+	texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result1 = g_txVolume.SampleLevel(g_sampler, texCoord, 0);
+	float s = (fVoxel_idx.z - z0_idx) / (z1_idx - z0_idx);
+	return lerp(result0,result1,s);
+}
+float3 CalNormal( float3 P)// P is the 3D coordinate in local space
+{
+	float depth_dx = samFlat3D(P+voxelInfo.w*float3 ( 1, 0, 0 )).x - samFlat3D(P+voxelInfo.w*float3 ( -1, 0, 0 )).x;
+	float depth_dy = samFlat3D(P+voxelInfo.w*float3 ( 0, 1, 0 )).x - samFlat3D(P+voxelInfo.w*float3 ( 0, -1, 0 )).x;
+	float depth_dz = samFlat3D(P+voxelInfo.w*float3 ( 0, 0, 1 )).x - samFlat3D(P+voxelInfo.w*float3 ( 0, 0, -1 )).x;
+	return -normalize ( float3 ( depth_dx, depth_dy, depth_dz ) );
+}
+#else
+float3 CalNormal( float3 txCoord )// Compute the normal from gradient
+{
+	float depth_dx = g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 1, 0, 0 ) ).x -
+		g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( -1, 0, 0 ) ).x;
+	float depth_dy = g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 0, 1, 0 ) ).x -
+		g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 0, -1, 0 ) ).x;
+	float depth_dz = g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 0, 0, 1 ) ).x -
+		g_txVolume.SampleLevel( g_sampler, txCoord, 0, int3 ( 0, 0, -1 ) ).x;
 	return -normalize( float3 ( depth_dx, depth_dy, depth_dz ) );
+
 }
-
-void PosInNextLevel(Texture3D<uint> txHPLevel, uint key_idx, inout uint4 p){// p.xyz is current pos, p.w is the sum
-	int4 idx = int4( p.xyz*2,0);
-	// Once we move to the next pyramid level, one texel in the previous level becomes 8 texels,
-	// Here we get the corresponding 8 texels' value from the idx pos in previous level 
-	uint4 frontNeighbor = uint4(txHPLevel.Load(idx, int3(0, 0, 0)), txHPLevel.Load(idx, int3(1, 0, 0)),
-								txHPLevel.Load(idx, int3(0, 1, 0)), txHPLevel.Load(idx, int3(1, 1, 0)));
-	uint4 backNeighbor = uint4(txHPLevel.Load(idx, int3(0, 0, 1)), txHPLevel.Load(idx, int3(1, 0, 1)),
-								txHPLevel.Load(idx, int3(0, 1, 1)), txHPLevel.Load(idx, int3(1, 1, 1)));
-
-	// The following 2 uint4 variables works as the 8bit flag, which indicates whether
-	// the local key value is greater or less than those value from the 8 texels
-	uint4 frontFlag = uint4(0,0,0,0);// indicate which quadrant the query belongs to
-	uint4 backFlag = uint4(0,0,0,0);// as the same as above
-
-	// Here is how we calculate the local key
-	uint localKey = key_idx - p.w;// substraction on key_idx is needed when moving p to the next HP level
-
-	// The following code shows how we navigating in the current level 
-	uint acc = frontNeighbor.x;
-	frontFlag.x = acc < localKey;// flag the 'bit' if key value is larger than that quadrant sum
-	acc += frontNeighbor.y;
-	frontFlag.y = acc < localKey;
-	acc += frontNeighbor.z;
-	frontFlag.z = acc < localKey;
-	acc += frontNeighbor.w;
-	frontFlag.w = acc < localKey;
-	acc += backNeighbor.x;
-	backFlag.x = acc < localKey;
-	acc += backNeighbor.y;
-	backFlag.y = acc < localKey;
-	acc += backNeighbor.z;
-	backFlag.z = acc < localKey;
-	acc += backNeighbor.w;
-	//backFlag.w = 0; // now acc < key_idx must satisfied
-	// now we sum the quadrants' whose accumulating value is less than the local key, 
-	// and calculate the new p.w for generating new local key in the next level
-	uint sum = dot(frontNeighbor,frontFlag) + dot(backNeighbor,backFlag); 
-	p.w += sum;
-	// We calculate the p in this level
-	uint offsetIdx = frontFlag.x + frontFlag.y + frontFlag.z + frontFlag.w + backFlag.x + backFlag.y + backFlag.z + backFlag.w;
-	p.xyz = p.xyz*2 + cb_QuadrantOffset[offsetIdx];
-	return;
-}
-
-void PosInBaseLevel(Texture3D<uint> txHPBase, uint key_idx, inout uint4 p){// p.xyz is current pos, p.w is the sum
-	int4 idx = int4(p.xyz * 2, 0);
-		// Once we move to the next pyramid level, one texel in the previous level becomes 8 texels,
-		// Here we get the corresponding 8 texels' value from the idx pos in previous level 
-		uint4 frontNeighbor = uint4(txHPBase.Load(idx, int3(0, 0, 0)), txHPBase.Load(idx, int3(1, 0, 0)),
-		txHPBase.Load(idx, int3(0, 1, 0)), txHPBase.Load(idx, int3(1, 1, 0)));
-	uint4 backNeighbor = uint4(txHPBase.Load(idx, int3(0, 0, 1)), txHPBase.Load(idx, int3(1, 0, 1)),
-							   txHPBase.Load(idx, int3(0, 1, 1)), txHPBase.Load(idx, int3(1, 1, 1)));
-	frontNeighbor = clamp(frontNeighbor,0,1);
-	backNeighbor = clamp(backNeighbor,0,1);
-	// The following 2 uint4 variables works as the 8bit flag, which indicates whether
-	// the local key value is greater or less than those value from the 8 texels
-	uint4 frontFlag = uint4(0, 0, 0, 0);// indicate which quadrant the query belongs to
-		uint4 backFlag = uint4(0, 0, 0, 0);// as the same as above
-
-		// Here is how we calculate the local key
-		uint localKey = key_idx - p.w;// substraction on key_idx is needed when moving p to the next HP level
-
-	// The following code shows how we navigating in the current level 
-	uint acc = frontNeighbor.x;
-	frontFlag.x = acc < localKey;// flag the 'bit' if key value is larger than that quadrant sum
-	acc += frontNeighbor.y;
-	frontFlag.y = acc < localKey;
-	acc += frontNeighbor.z;
-	frontFlag.z = acc < localKey;
-	acc += frontNeighbor.w;
-	frontFlag.w = acc < localKey;
-	acc += backNeighbor.x;
-	backFlag.x = acc < localKey;
-	acc += backNeighbor.y;
-	backFlag.y = acc < localKey;
-	acc += backNeighbor.z;
-	backFlag.z = acc < localKey;
-	acc += backNeighbor.w;
-	//backFlag.w = 0; // now acc < key_idx must satisfied
-	// now we sum the quadrants' whose accumulating value is less than the local key, 
-	// and calculate the new p.w for generating new local key in the next level
-	uint sum = dot(frontNeighbor, frontFlag) + dot(backNeighbor, backFlag);
-	p.w += sum;
-	// We calculate the p in this level
-	uint offsetIdx = frontFlag.x + frontFlag.y + frontFlag.z + frontFlag.w + backFlag.x + backFlag.y + backFlag.z + backFlag.w;
-	p.xyz = p.xyz * 2 + cb_QuadrantOffset[offsetIdx];
-	return;
-}
+#endif
 //--------------------------------------------------------------------------------------
 // Vertex Shader
 //--------------------------------------------------------------------------------------
-PassVS_OUT PassVS( uint vertexID : SV_VertexID ){// Pass through VS
-	PassVS_OUT output = (PassVS_OUT)0;
+GS_INPUT VS( )
+{
+	GS_INPUT output = (GS_INPUT)0;
+
 	return output;
 }
 
 //--------------------------------------------------------------------------------------
 // Geometry Shader
 //--------------------------------------------------------------------------------------
-// GS for creating HP base volume, using normalized texCoord
-[maxvertexcount(4)]
-void VolSliceNorGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, inout TriangleStream<SliceGS_OUT> triStream){
-	SliceGS_OUT output;
-	output.SV_Pos = float4( -1.0f, 1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( 0.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);// the half pix offset still exist when access texture3D(only z)
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( -1.0f, -1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( 0.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( 1.0f, 1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( 1.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( 1.0f, -1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( 1.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-}
-// GS for creating HP mip level volume, using int non-normalized texCoord
-[maxvertexcount(4)]
-void VolSliceGS( point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, inout TriangleStream<SliceGS_OUT> triStream){
-	SliceGS_OUT output;
-	output.SV_Pos = float4( -1.0f, 1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( -0.5, -0.5, vertexID, 0 );
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( -1.0f, -1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( -0.5, cb_i4RTReso.y-0.5, vertexID, 0 );
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( 1.0f, 1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( cb_i4RTReso.x-0.5, -0.5, vertexID, 0 );
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-	output.SV_Pos = float4( 1.0f, -1.0f, 0.0f, 1.0f );
-	output.VolCoord = float4( cb_i4RTReso.x-0.5, cb_i4RTReso.y-0.5, vertexID, 0 );
-	output.SliceIdx = vertexID;
-	triStream.Append( output );
-}
-// GS for traversing the HP to generate MC case and output correspondent triangle
-[maxvertexcount(15)]
-void TraversalGS( point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, inout TriangleStream<ShadingPS_IN> triStream){
-	uint4 p = uint4( 0, 0, 0, 0 );
-	// now p is the idx of the pyramid top: 1^3 texture3d,
-	// g_txHP9 is 2^3 texture3d object
-#if VOXEL_NUM_X > 512
-	PosInNextLevel( g_txHP9, vertexID, p);
-#endif
-#if VOXEL_NUM_X > 256
-	PosInNextLevel( g_txHP8, vertexID, p);
-#endif
-#if VOXEL_NUM_X > 128
-	PosInNextLevel( g_txHP7, vertexID, p);// now p is the idx of the pyramid 2th level: 2^3 texture3d
-#endif
-#if VOXEL_NUM_X > 64
-	PosInNextLevel( g_txHP6, vertexID, p);// now p is the idx of the pyramid 3th level: 4^3 texture3d
-#endif
-	PosInNextLevel( g_txHP5, vertexID, p);// now p is the idx of the pyramid 4th level: 8^3 texture3d
-	PosInNextLevel( g_txHP4, vertexID, p);// now p is the idx of the pyramid 5th level: 16^3 texture3d
-	PosInNextLevel( g_txHP3, vertexID, p);// now p is the idx of the pyramid 6th level: 32^3 texture3d
-	PosInNextLevel( g_txHP2, vertexID, p);// now p is the idx of the pyramid 7th level: 64^3 texture3d
-	PosInNextLevel( g_txHP1, vertexID, p);// now p is the idx of the pyramid 8th level: 128^3 texture3d
-	// Since in the base level the texel actully contain the caseID of that MC cube so 
-	// we use another function to handle it
-	PosInBaseLevel( g_txHP0, vertexID, p);// now p is the idx of the pyramid base level: 256^3 texture3d
+/*GS for rendering the volume on screen ------------texVolume Read, no half pixel correction*/
+[maxvertexcount(15 )]
+void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout TriangleStream<PS_INPUT> triStream)
+{
+	PS_INPUT output;
+	float3 voxelResolution = cb_f4CubeInfo.xyz;
+	float voxelSize = cb_f4CubeInfo.w;
+	float3 currentIdx;
+	currentIdx.z = primID / (uint)(cb_f4CubeInfo.x * cb_f4CubeInfo.y);
+	currentIdx.y = (primID % (uint)(cb_f4CubeInfo.x * cb_f4CubeInfo.y)) / (uint)cb_f4CubeInfo.x;
+	currentIdx.x = primID % (uint)(cb_f4CubeInfo.x * cb_f4CubeInfo.y) % (uint)cb_f4CubeInfo.x;
+	float3 pos = (currentIdx - 0.5 * cb_f4CubeInfo.xyz) * cb_f4CubeInfo.w;// Convert to object space
+	//float3 halfCube = 0;
 
-	uint caseIdx = g_txHP0.Load(int4(p.xyz,0));
-	
-	// Read the 8 corner of each MC cube
 	float4 fieldData[8];
 	float3 fieldNormal[8];
-	// p is int idx, so when convert it to normalized texture coordinate, we need to add half pixel in all dimensions
-	float3 volTexCoord = float3(p.xyz+float3(0.5,0.5,0.5)) / cb_f4VolInfo.xyz;//-----------------------------------half pixel offset on z? attention!!!!!!!!!!!!!!!!
-	float3 halfCube = 0.5f / cb_f4VolInfo.xyz;
-	[unroll] for( int j = 0; j < 8; ++j ){
-		float3 idx = volTexCoord + halfCube * cb_halfCubeOffset[j];
-		fieldData[j] = g_txVolume.SampleLevel(g_samLinear, idx, 0);
-		fieldNormal[j] = CalNormal( idx );
+#if FLAT3D
+	[unroll] for( int i = 0; i < 8; ++i ){
+		float3 P = pos + cb_f4CubeInfo.w * cb_halfCubeOffset[i]*0.5;
+		fieldData[i] = samFlat3D(P);
+		fieldNormal[i] = CalNormal( P );
 	}
+#else
+	float3 volTexCoord = pos / cb_f4VolSize.xyz + 0.5;// Convert to volume texture space [0,0,0]-[1,1,1]
+	float3 halfCube = 0.5f * cb_f4CubeInfo.w / cb_f4VolSize.xyz;
+	[unroll] for( int i = 0; i < 8; ++i ){
+		float3 idx = volTexCoord + halfCube * cb_halfCubeOffset[i];
+		fieldData[i] = g_txVolume.SampleLevel(g_sampler, idx, 0);
+		fieldNormal[i] = CalNormal( idx );
+	}
+#endif
+	uint caseIdx =	(uint(fieldData[7].x > cb_f4VolSize.w) << 7) | (uint(fieldData[6].x > cb_f4VolSize.w) << 6) |
+					(uint(fieldData[5].x > cb_f4VolSize.w) << 5) | (uint(fieldData[4].x > cb_f4VolSize.w) << 4) |
+					(uint(fieldData[3].x > cb_f4VolSize.w) << 3) | (uint(fieldData[2].x > cb_f4VolSize.w) << 2) |
+					(uint(fieldData[1].x > cb_f4VolSize.w) << 1) | (uint(fieldData[0].x > cb_f4VolSize.w));
 
+	if(caseIdx == 0 ||caseIdx == 255 ) return;// if totally inside or outside surface, discard it
+	//if(caseIdx !=15 && caseIdx != 240 /*&& caseIdx != 153 && caseIdx != 102*/) return;
 	int polygonCount = cb_casePolyTable[caseIdx];// Find how many polygon need to be generated
-	float3 pos = (p.xyz - 0.5*cb_f4VolInfo.xyz) * cb_f4HPMCInfo.w;
 
 	VertexInfo v0, v1;
 	int3 edges;
@@ -616,73 +467,38 @@ void TraversalGS( point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, in
 		endPoints = cb_edgeTable[edges.x];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
-		v0.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
+		v0.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
 		v1.Field = fieldData[endPoints.y];
 		v1.Nor = fieldNormal[endPoints.y];
-		v1.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
+		v1.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 
 		endPoints = cb_edgeTable[edges.z];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
-		v0.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
+		v0.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
 		v1.Field = fieldData[endPoints.y];
 		v1.Nor = fieldNormal[endPoints.y];
-		v1.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
+		v1.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 
 		endPoints = cb_edgeTable[edges.y];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
-		v0.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
+		v0.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
 		v1.Field = fieldData[endPoints.y];
 		v1.Nor = fieldNormal[endPoints.y];
-		v1.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
+		v1.Pos = pos + cb_f4CubeInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append( CalIntersectionVertex( v0, v1 ));
 		triStream.RestartStrip();
 	}
 }
 
 
-
 //--------------------------------------------------------------------------------------
 // Pixel Shader
 //--------------------------------------------------------------------------------------
-uint HPMCBasePS(SliceGS_OUT input) : SV_Target{
-	float4 fieldData[8];				// To store the field data at each voxel's 8 corner point
-	float3 halfCube = 0.5 * cb_f4HPMCInfo.w / (cb_f4VolInfo.xyz * cb_f4HPMCInfo.w);
-	[unroll]
-	for( int i = 0; i < 8; ++i){
-		fieldData[i] = g_txVolume.Sample( g_samLinear, input.VolCoord.xyz + halfCube * cb_halfCubeOffset[i] );
-	}
-	uint caseIdx =	(uint(fieldData[7].x > cb_f4VolInfo.w) << 7) | (uint(fieldData[6].x > cb_f4VolInfo.w) << 6) |
-					(uint(fieldData[5].x > cb_f4VolInfo.w) << 5) | (uint(fieldData[4].x > cb_f4VolInfo.w) << 4) |
-					(uint(fieldData[3].x > cb_f4VolInfo.w) << 3) | (uint(fieldData[2].x > cb_f4VolInfo.w) << 2) |
-					(uint(fieldData[1].x > cb_f4VolInfo.w) << 1) | (uint(fieldData[0].x > cb_f4VolInfo.w));
-	if(caseIdx == 0 || caseIdx == 255) return 0;
-	return caseIdx;
-	//return (uint)1;
-}
-
-uint ReductionBasePS( SliceGS_OUT input ) : SV_Target{
-	uint sum = 0;
-	[unroll]
-	for( int i = 0; i < 8; i++){
-		sum += g_txHPLayer.Load( int4(input.VolCoord*2), cb_QuadrantOffset[i]) == 0 ? 0 : 1;
-	}
-	return sum;
-}
-
-uint ReductionPS( SliceGS_OUT input ) : SV_Target{
-	uint sum = 0;
-	[unroll]
-	for( int i = 0; i < 8; i++){
-		sum += g_txHPLayer.Load( int4(input.VolCoord*2), cb_QuadrantOffset[i] );
-	}
-	return sum;
-}
-
-float4 RenderPS(ShadingPS_IN input) : SV_Target
+float4 PS(PS_INPUT input) : SV_Target
 {
 	float3 color = input.Col.rgb;
 	// shading part
@@ -701,6 +517,5 @@ float4 RenderPS(ShadingPS_IN input) : SV_Target
 
 	float3 col = ambientLight + directionalLight + pointLight;
 	return float4( col, 0 );
-	//return float4( 0,1,0, 1 );
 
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <D3D11.h>
 #include <DirectXMath.h>
+#include <cmath>
 #include "DXUT.h"
 #include "DXUTcamera.h"
 #include "SDKmisc.h"
@@ -9,17 +10,35 @@
 
 using namespace DirectX;
 
-struct CB_HPMC
-{
-	XMFLOAT4	cubeInfo;// xyz reso on xyz component, voxel size on w component
-	XMFLOAT4	volSize;// 1.0f / (voxelRes * voxelSize); isolevel in w component
-	XMFLOAT4	viewPos;
-	XMMATRIX	mWorldViewProj;
-#if FLAT3D
-	XMFLOAT4	volumeTexInfo;// .xyz demension on xyz, .w is voxel size
-	XMINT2		vTile_num;
-#endif
+// Compile time constant(log2)
+template<size_t N>
+struct log2_{
+	enum{ value = 1 + log2_<N/2>::value};
 };
+template<>
+struct log2_< 1 >{
+	enum{ value = 0};
+};
+// Compile time constant(log2 + 1)
+template<size_t N, size_t S=1>
+struct func_{
+	enum{ value = S + log2_<N>::value};
+};
+
+struct CB_HPMC_Init{
+	XMFLOAT4	cb_f4HPMCInfo;// xyz: dimemsion of MC grid; w is sub cube size;
+	XMFLOAT4	cb_f4VolInfo;// xyz:dimension of volume input; w is voxel size;
+};
+
+struct CB_HPMC_Frame{
+	XMFLOAT4	cb_f4ViewPos;
+	XMMATRIX	cb_mWorldViewProj;
+};
+
+struct CB_HPMC_Reduct{
+	XMINT4		cb_i4RTReso;
+};
+
 class HistoPyramidMC
 {
 public:
@@ -27,8 +46,13 @@ public:
 	D3D11_VIEWPORT					m_Viewport;// Viewport for output image
 
 	// Constant buffer, need to update each frame
-	CB_HPMC							m_cbPerFrame;
-	ID3D11Buffer*					m_pCB_HPMC;
+	CB_HPMC_Frame					m_cbPerFrame;
+	ID3D11Buffer*					m_pCB_HPMC_Frame;
+	CB_HPMC_Init					m_cbInit;
+	ID3D11Buffer*					m_pCB_HPMC_Init;
+	CB_HPMC_Reduct					m_cbReduct;
+	ID3D11Buffer*					m_pCB_HPMC_Reduct;
+
 
 	// Resource for output image
 	UINT							m_uRTwidth;// Output image reso.width
@@ -42,12 +66,24 @@ public:
 	ID3D11RasterizerState*			m_pOutRS;// Output rasterizer state
 
 	// Resource for HPMC pass
-	ID3D11VertexShader*				m_pVS;
-	ID3D11PixelShader*				m_pPS;
-	ID3D11GeometryShader*			m_pGS;
+	ID3D11VertexShader*				m_pPassVS;
+	ID3D11GeometryShader*			m_pVolSliceNorGS;// GS for creating HP base level;
+	ID3D11GeometryShader*			m_pVolSliceGS;// GS for creating HP's rest level;
+	ID3D11GeometryShader*			m_pTraversalGS;// GS for traversing HP and generating triangles;
+	ID3D11PixelShader*				m_pHPMCBasePS;// Discriminator: convert SDF vol to HPMC base(active/inactive cells)
+	ID3D11PixelShader*				m_pReductionPS;// Reduction PS: 3D version, 8 cells sum to 1 cell
+	ID3D11PixelShader*				m_pReductionBasePS;// Reduction PS: 3D version, 8 cells sum to 1 cell
+	ID3D11PixelShader*				m_pRenderPS;// Rendering PS: basic phong shading
 	ID3D11SamplerState*				m_pSS_Linear;
-	ID3D11InputLayout*				m_pVL;
-	ID3D11Buffer*					m_pVB;
+	ID3D11InputLayout*				m_pPassVL;
+	ID3D11Buffer*					m_pPassVB;
+
+	//Vedio memory resource for HPMC pass
+	ID3D11ShaderResourceView*		m_pNullSRV[func_<VOXEL_NUM_X,3>::value];
+	ID3D11ShaderResourceView*		m_pHistoPyramidSRV[func_<VOXEL_NUM_X>::value];
+	ID3D11RenderTargetView*			m_pHistoPyramidRTV[func_<VOXEL_NUM_X>::value];
+	ID3D11Texture3D*				m_pHistoPyramidTex[func_<VOXEL_NUM_X>::value];
+	ID3D11Texture3D*				m_pHPTopTex;
 
 	// Shader Resource View for volume data (input)
 	ID3D11ShaderResourceView*		m_pVolSRV;
@@ -55,17 +91,14 @@ public:
 	// Framewire and solid switcher
 	bool							m_bFramewire;
 
-	HistoPyramidMC(XMFLOAT4 volumeTexInfo, float MCCell_size = 1.0f / 64.0f, bool RTTexture = false,
+	HistoPyramidMC(XMFLOAT4 volumeTexInfo, bool RTTexture = false,
 		UINT txWidth = SUB_TEXTUREWIDTH, UINT txHeight = SUB_TEXTUREHEIGHT)
 	{
-#if FLAT3D
-		m_cbPerFrame.volumeTexInfo = volumeTexInfo;
-#endif
-		m_cbPerFrame.volSize.x = volumeTexInfo.x * volumeTexInfo.w;
-		m_cbPerFrame.volSize.y = volumeTexInfo.y * volumeTexInfo.w;
-		m_cbPerFrame.volSize.z = volumeTexInfo.z * volumeTexInfo.w;
-		m_cbPerFrame.volSize.w = 1.0f;
-		UpdateMCCubeInfo(MCCell_size);
+		m_cbInit.cb_f4VolInfo = volumeTexInfo;
+		m_cbInit.cb_f4VolInfo.w = 1;
+		m_cbInit.cb_f4HPMCInfo = volumeTexInfo;
+		m_cbReduct.cb_i4RTReso = XMINT4(round(volumeTexInfo.x),round(volumeTexInfo.y),
+										 round(volumeTexInfo.z),0);
 		m_uRTwidth = txWidth;
 		m_uRTheight = txHeight;
 		m_bFramewire = false;
@@ -74,44 +107,45 @@ public:
 		m_Camera.SetViewParams(vecEye, vecAt);
 	}
 
-	void UpdateMCCubeInfo(float MCCell_size)
-	{
-		UINT x = UINT(m_cbPerFrame.volSize.x / MCCell_size) + 1;
-		UINT y = UINT(m_cbPerFrame.volSize.y / MCCell_size) + 1;
-		UINT z = UINT(m_cbPerFrame.volSize.z / MCCell_size) + 1;
-		m_cbPerFrame.cubeInfo.w = MCCell_size;
-		m_cbPerFrame.cubeInfo.x = x;
-		m_cbPerFrame.cubeInfo.y = y;
-		m_cbPerFrame.cubeInfo.z = z;
-#if FLAT3D
-		m_cbPerFrame.vTile_num.x = (UINT)ceil(sqrt(m_cbPerFrame.volumeTexInfo.z));
-		m_cbPerFrame.vTile_num.y = (UINT)ceil(sqrt(m_cbPerFrame.volumeTexInfo.z));
-#endif
-	}
 	HRESULT CreateResource(ID3D11Device* pd3dDevice, ID3D11ShaderResourceView*	pVolumeSRV)
 	{
 		HRESULT hr = S_OK;
 		ID3DBlob* pVSBlob = NULL;
-		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "VS", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pVSBlob));
-		V_RETURN(pd3dDevice->CreateVertexShader(pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), NULL, &m_pVS));
-		DXUT_SetDebugName(m_pVS, "m_pVS");
-
-		ID3DBlob* pPSBlob = NULL;
-		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "PS", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSBlob));
-		V_RETURN(pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &m_pPS));
-		DXUT_SetDebugName(m_pPS, "m_pPS");
-		pPSBlob->Release();
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "PassVS", "vs_5_0", COMPILE_FLAG, 0, &pVSBlob));
+		V_RETURN(pd3dDevice->CreateVertexShader(pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), NULL, &m_pPassVS));
+		DXUT_SetDebugName(m_pPassVS, "m_pPassVS");
 
 		ID3DBlob* pGSBlob = NULL;
-		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "GS", "gs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pGSBlob));
-		V_RETURN(pd3dDevice->CreateGeometryShader(pGSBlob->GetBufferPointer(), pGSBlob->GetBufferSize(), NULL, &m_pGS));
-		DXUT_SetDebugName(m_pGS, "m_pGS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "VolSliceNorGS", "gs_5_0", COMPILE_FLAG, 0, &pGSBlob));
+		V_RETURN(pd3dDevice->CreateGeometryShader(pGSBlob->GetBufferPointer(), pGSBlob->GetBufferSize(), NULL, &m_pVolSliceNorGS));
+		DXUT_SetDebugName(m_pVolSliceNorGS, "m_pVolSliceNorGS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "VolSliceGS", "gs_5_0", COMPILE_FLAG, 0, &pGSBlob));
+		V_RETURN(pd3dDevice->CreateGeometryShader(pGSBlob->GetBufferPointer(), pGSBlob->GetBufferSize(), NULL, &m_pVolSliceGS));
+		DXUT_SetDebugName(m_pVolSliceGS, "m_pVolSliceGS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "TraversalGS", "gs_5_0", COMPILE_FLAG, 0, &pGSBlob));
+		V_RETURN(pd3dDevice->CreateGeometryShader(pGSBlob->GetBufferPointer(), pGSBlob->GetBufferSize(), NULL, &m_pTraversalGS));
+		DXUT_SetDebugName(m_pTraversalGS, "m_pTraversalGS");
 		pGSBlob->Release();
+
+		ID3DBlob* pPSBlob = NULL;
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "HPMCBasePS", "ps_5_0", COMPILE_FLAG, 0, &pPSBlob));
+		V_RETURN(pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &m_pHPMCBasePS));
+		DXUT_SetDebugName(m_pHPMCBasePS, "m_pHPMCBasePS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "ReductionPS", "ps_5_0", COMPILE_FLAG, 0, &pPSBlob));
+		V_RETURN(pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &m_pReductionPS));
+		DXUT_SetDebugName(m_pReductionPS, "m_pReductionPS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "ReductionBasePS", "ps_5_0", COMPILE_FLAG, 0, &pPSBlob));
+		V_RETURN(pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &m_pReductionBasePS));
+		DXUT_SetDebugName(m_pReductionBasePS, "m_pReductionBasePS");
+		V_RETURN(DXUTCompileFromFile(L"HistoPyramidMC.fx", nullptr, "RenderPS", "ps_5_0", COMPILE_FLAG, 0, &pPSBlob));
+		V_RETURN(pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &m_pRenderPS));
+		DXUT_SetDebugName(m_pRenderPS, "m_pRenderPS");
+		pPSBlob->Release();
 
 		D3D11_INPUT_ELEMENT_DESC inputLayout[] =
 		{ { "POSITION", 0, DXGI_FORMAT_R16_SINT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
-		V_RETURN(pd3dDevice->CreateInputLayout(inputLayout, ARRAYSIZE(inputLayout), pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &m_pVL));
-		DXUT_SetDebugName(m_pVL, "m_pVL");
+		V_RETURN(pd3dDevice->CreateInputLayout(inputLayout, ARRAYSIZE(inputLayout), pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &m_pPassVL));
+		DXUT_SetDebugName(m_pPassVL, "m_pPassVL");
 		pVSBlob->Release();
 
 		D3D11_BUFFER_DESC bd;
@@ -120,16 +154,22 @@ public:
 		bd.ByteWidth = sizeof(short);
 		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 		bd.CPUAccessFlags = 0;
-		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pVB));
-		DXUT_SetDebugName(m_pVB, "m_pVB");
+		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pPassVB));
+		DXUT_SetDebugName(m_pPassVB, "m_pPassVB");
 
 		// Create the constant buffers
 		bd.Usage = D3D11_USAGE_DEFAULT;
 		bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		bd.CPUAccessFlags = 0;
-		bd.ByteWidth = sizeof(CB_HPMC);
-		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pCB_HPMC));
-		DXUT_SetDebugName(m_pCB_HPMC, "m_pCB_HPMC");
+		bd.ByteWidth = sizeof(CB_HPMC_Init);
+		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pCB_HPMC_Init));
+		DXUT_SetDebugName(m_pCB_HPMC_Init, "m_pCB_HPMC_Init");
+		bd.ByteWidth = sizeof(CB_HPMC_Frame);
+		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pCB_HPMC_Frame));
+		DXUT_SetDebugName(m_pCB_HPMC_Frame, "m_pCB_HPMC_Frame");
+		bd.ByteWidth = sizeof(CB_HPMC_Reduct);
+		V_RETURN(pd3dDevice->CreateBuffer(&bd, NULL, &m_pCB_HPMC_Reduct));
+		DXUT_SetDebugName(m_pCB_HPMC_Reduct, "m_pCB_HPMC_Reduct");
 
 		// Create output texture resource
 		D3D11_TEXTURE2D_DESC	RTtextureDesc = { 0 };
@@ -245,6 +285,57 @@ public:
 		V_RETURN(pd3dDevice->CreateRasterizerState(&rsDesc, &m_pOutRS));
 		DXUT_SetDebugName(m_pOutRS, "m_pOutRS");
 
+		// Create resource for histoPyramid
+		char temp[100];
+		D3D11_TEXTURE3D_DESC TEXDesc;
+		ZeroMemory(&TEXDesc,sizeof(TEXDesc));
+		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc;
+		ZeroMemory( &SRVDesc, sizeof( SRVDesc ));
+		D3D11_RENDER_TARGET_VIEW_DESC RTVDesc;
+		ZeroMemory( &RTVDesc, sizeof( RTVDesc ));
+		for( int i = 0; i < func_<VOXEL_NUM_X>::value; ++i){
+			TEXDesc.Width = ceil((float)VOXEL_NUM_X / pow(2,i));
+			TEXDesc.Height = ceil((float)VOXEL_NUM_Y / pow(2,i));
+			TEXDesc.Depth = ceil((float)VOXEL_NUM_Z / pow(2,i));
+			TEXDesc.MipLevels = 1;
+			TEXDesc.Format = DXGI_FORMAT_R32_UINT;
+			TEXDesc.Usage = D3D11_USAGE_DEFAULT;
+			TEXDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+			TEXDesc.CPUAccessFlags = 0;
+			TEXDesc.MiscFlags = 0;
+			V_RETURN( pd3dDevice->CreateTexture3D( &TEXDesc, NULL, &m_pHistoPyramidTex[i]) );
+			sprintf_s(temp,"m_pHistoPyramidTex[%d]",i);
+			DXUT_SetDebugName( m_pHistoPyramidTex[i],temp );
+
+			SRVDesc.Format = TEXDesc.Format;
+			SRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
+			SRVDesc.Texture3D.MostDetailedMip = 0;
+			SRVDesc.Texture3D.MipLevels = 1;
+			V_RETURN( pd3dDevice->CreateShaderResourceView( m_pHistoPyramidTex[i],&SRVDesc,&m_pHistoPyramidSRV[i]));
+			//V_RETURN( pd3dDevice->CreateShaderResourceView( m_pHistoPyramidTex[i],0,&m_pHistoPyramidSRV[i]));
+			sprintf_s(temp, "m_pHistoPyramidSRV[%d]",i);
+			DXUT_SetDebugName( m_pHistoPyramidSRV[i],temp);
+			m_pNullSRV[i] = NULL;
+			
+			RTVDesc.Format = TEXDesc.Format;
+			RTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
+			RTVDesc.Texture3D.FirstWSlice = 0;
+			RTVDesc.Texture3D.MipSlice = 0;
+			RTVDesc.Texture3D.WSize = ceil((float)VOXEL_NUM_Z / pow(2,i));
+			V_RETURN( pd3dDevice->CreateRenderTargetView( m_pHistoPyramidTex[i],&RTVDesc,&m_pHistoPyramidRTV[i]));
+			//V_RETURN( pd3dDevice->CreateRenderTargetView( m_pHistoPyramidTex[i],0,&m_pHistoPyramidRTV[i]));
+			sprintf_s(temp, "m_pHistoPyramidRTV[%d]",i);
+			DXUT_SetDebugName( m_pHistoPyramidRTV[i],temp);
+		}
+		m_pNullSRV[func_<VOXEL_NUM_X,1>::value]=NULL;
+		m_pNullSRV[func_<VOXEL_NUM_X,2>::value]=NULL;
+
+		// Create texture for CPU to read back # of active cell;
+		TEXDesc.Usage = D3D11_USAGE_STAGING;
+		TEXDesc.BindFlags = 0;
+		TEXDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		V_RETURN( pd3dDevice->CreateTexture3D( &TEXDesc, NULL, &m_pHPTopTex))
+
 		m_Viewport.Width = (float)m_uRTwidth;
 		m_Viewport.Height = (float)m_uRTheight;
 		m_Viewport.MinDepth = 0.0f;
@@ -268,11 +359,16 @@ public:
 
 	void Release()
 	{
-		SAFE_RELEASE(m_pVS);
-		SAFE_RELEASE(m_pPS);
-		SAFE_RELEASE(m_pGS);
-		SAFE_RELEASE(m_pVL);
-		SAFE_RELEASE(m_pVB);
+		SAFE_RELEASE(m_pPassVS);
+		SAFE_RELEASE(m_pVolSliceNorGS);
+		SAFE_RELEASE(m_pVolSliceGS);
+		SAFE_RELEASE(m_pTraversalGS);
+		SAFE_RELEASE(m_pHPMCBasePS);
+		SAFE_RELEASE(m_pReductionBasePS);
+		SAFE_RELEASE(m_pReductionPS);
+		SAFE_RELEASE(m_pRenderPS);
+		SAFE_RELEASE(m_pPassVL);
+		SAFE_RELEASE(m_pPassVB);
 
 		SAFE_RELEASE(m_pSS_Linear);
 
@@ -285,7 +381,16 @@ public:
 		SAFE_RELEASE(m_pOutDSSView);
 		SAFE_RELEASE(m_pOutDSState);
 
-		SAFE_RELEASE(m_pCB_HPMC);
+		for( int i=0;i<func_<VOXEL_NUM_X>::value; ++i){
+			SAFE_RELEASE(m_pHistoPyramidSRV[i]);
+			SAFE_RELEASE(m_pHistoPyramidTex[i]);
+			SAFE_RELEASE(m_pHistoPyramidRTV[i]);
+		}
+		SAFE_RELEASE(m_pHPTopTex);
+
+		SAFE_RELEASE(m_pCB_HPMC_Frame);
+		SAFE_RELEASE(m_pCB_HPMC_Init);
+		SAFE_RELEASE(m_pCB_HPMC_Reduct);
 	}
 
 	void Update(float fElapsedTime)
@@ -293,8 +398,78 @@ public:
 		m_Camera.FrameMove(fElapsedTime);
 	}
 
+	UINT BuildHP(ID3D11DeviceContext* pd3dImmediateContext)
+	{
+		//pd3dImmediateContext->VSSetShader(m_pPassVS, NULL,0);
+		pd3dImmediateContext->OMSetRenderTargets(1,&m_pHistoPyramidRTV[0],NULL);
+		pd3dImmediateContext->PSSetShaderResources(0, 1, &m_pVolSRV);
+		pd3dImmediateContext->PSSetSamplers(0,1,&m_pSS_Linear);
+		pd3dImmediateContext->GSSetShader(m_pVolSliceNorGS, NULL,0);
+		pd3dImmediateContext->PSSetShader(m_pHPMCBasePS,NULL,0);
+		m_cbReduct.cb_i4RTReso.x = VOXEL_NUM_X;
+		m_cbReduct.cb_i4RTReso.y = VOXEL_NUM_Y;
+		m_cbReduct.cb_i4RTReso.z = VOXEL_NUM_Z;
+		// Setup the viewport to match the backbuffer
+		D3D11_VIEWPORT vp;
+		vp.Width = m_cbReduct.cb_i4RTReso.x;
+		vp.Height = m_cbReduct.cb_i4RTReso.y;
+		vp.MinDepth = 0.0f;
+		vp.MaxDepth = 1.0f;
+		vp.TopLeftX = 0;
+		vp.TopLeftY = 0; 
+		pd3dImmediateContext->RSSetViewports(1,&vp);
+		pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Reduct,0,NULL,&m_cbReduct,0,0);
+		pd3dImmediateContext->Draw(VOXEL_NUM_Z,0);
+
+		pd3dImmediateContext->GSSetShader(m_pVolSliceGS,NULL,0);
+		for( int i=1; i<func_<VOXEL_NUM_X>::value; ++i){
+			m_cbReduct.cb_i4RTReso.x = ceil((float)VOXEL_NUM_X / pow(2,i));
+			m_cbReduct.cb_i4RTReso.y = ceil((float)VOXEL_NUM_Y / pow(2,i));
+			m_cbReduct.cb_i4RTReso.z = ceil((float)VOXEL_NUM_Z / pow(2,i));
+			vp.Width = m_cbReduct.cb_i4RTReso.x;
+			vp.Height = m_cbReduct.cb_i4RTReso.y;
+			pd3dImmediateContext->RSSetViewports(1,&vp);
+			pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Reduct,0,NULL,&m_cbReduct,0,0);
+			pd3dImmediateContext->OMSetRenderTargets( 1, &m_pHistoPyramidRTV[i],NULL);
+			pd3dImmediateContext->PSSetShaderResources(1,1,&m_pHistoPyramidSRV[i-1]);
+			if(i==1)
+				pd3dImmediateContext->PSSetShader(m_pReductionBasePS,NULL,0);
+			else
+				pd3dImmediateContext->PSSetShader(m_pReductionPS,NULL,0);
+			pd3dImmediateContext->Draw(m_cbReduct.cb_i4RTReso.z,0);
+		}
+
+		pd3dImmediateContext->CopyResource(m_pHPTopTex,m_pHistoPyramidTex[func_<VOXEL_NUM_X>::value - 1]);
+		D3D11_MAPPED_SUBRESOURCE subresource;
+		pd3dImmediateContext->Map(m_pHPTopTex,D3D11CalcSubresource(0,0,1),D3D11_MAP_READ,0,&subresource);
+		UINT num = *reinterpret_cast<UINT*>(subresource.pData);
+		pd3dImmediateContext->Unmap(m_pHPTopTex,D3D11CalcSubresource(0,0,1));
+		return num;
+	}
+
 	void Render(ID3D11DeviceContext* pd3dImmediateContext)
 	{
+		pd3dImmediateContext->IASetInputLayout(m_pPassVL);
+		UINT stride = sizeof(short);
+		UINT offset = 0;
+		pd3dImmediateContext->IASetVertexBuffers(0, 1, &m_pPassVB, &stride, &offset);
+		pd3dImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+		pd3dImmediateContext->GSSetSamplers(0, 1, &m_pSS_Linear);
+		pd3dImmediateContext->VSSetShader(m_pPassVS, NULL, 0);
+		pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Init, 0,NULL,&m_cbInit,0,0);
+		pd3dImmediateContext->GSSetConstantBuffers(0, 1, &m_pCB_HPMC_Init);
+		pd3dImmediateContext->GSSetConstantBuffers(1, 1, &m_pCB_HPMC_Frame);
+		pd3dImmediateContext->GSSetConstantBuffers(2, 1, &m_pCB_HPMC_Reduct);
+		pd3dImmediateContext->PSSetConstantBuffers(0, 1, &m_pCB_HPMC_Init);
+		pd3dImmediateContext->PSSetConstantBuffers(1, 1, &m_pCB_HPMC_Frame);
+		pd3dImmediateContext->PSSetConstantBuffers(2, 1, &m_pCB_HPMC_Reduct);
+
+		UINT activeCellNum = BuildHP(pd3dImmediateContext);
+
+		pd3dImmediateContext->OMSetRenderTargets(1, &m_pOutRTV, m_pOutDSSView);
+		pd3dImmediateContext->GSSetShaderResources(2,func_<VOXEL_NUM_X>::value,m_pHistoPyramidSRV);
+		pd3dImmediateContext->GSSetShaderResources(0,1,&m_pVolSRV);
+
 		XMMATRIX m_Proj = m_Camera.GetProjMatrix();
 		XMMATRIX m_View = m_Camera.GetViewMatrix();
 		XMMATRIX m_World = m_Camera.GetWorldMatrix();
@@ -302,44 +477,33 @@ public:
 
 		XMVECTOR t;
 
-		m_cbPerFrame.mWorldViewProj = XMMatrixTranspose(m_WorldViewProjection);
-		XMStoreFloat4(&m_cbPerFrame.viewPos, m_Camera.GetEyePt());
-		pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC, 0, NULL, &m_cbPerFrame, 0, 0);
+		m_cbPerFrame.cb_mWorldViewProj = XMMatrixTranspose(m_WorldViewProjection);
+		XMStoreFloat4(&m_cbPerFrame.cb_f4ViewPos, m_Camera.GetEyePt());
+		pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC_Frame, 0, NULL, &m_cbPerFrame, 0, 0);
 
 		float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 		pd3dImmediateContext->ClearRenderTargetView(m_pOutRTV, ClearColor);
 		pd3dImmediateContext->ClearDepthStencilView(m_pOutDSSView, D3D11_CLEAR_DEPTH, 1.0, 0);
 
-		pd3dImmediateContext->IASetInputLayout(m_pVL);
-		UINT stride = sizeof(short);
-		UINT offset = 0;
-		pd3dImmediateContext->IASetVertexBuffers(0, 1, &m_pVB, &stride, &offset);
-		pd3dImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
 		//pd3dImmediateContext->OMSetRenderTargets(1,&m_pOutputRTV, NULL);
-		pd3dImmediateContext->OMSetRenderTargets(1, &m_pOutRTV, m_pOutDSSView);
 		pd3dImmediateContext->OMSetDepthStencilState(m_pOutDSState, 1);
 		pd3dImmediateContext->RSSetViewports(1, &m_Viewport);
-		pd3dImmediateContext->VSSetShader(m_pVS, NULL, 0);
-		pd3dImmediateContext->PSSetShader(m_pPS, NULL, 0);
-		pd3dImmediateContext->GSSetShader(m_pGS, NULL, 0);
-		pd3dImmediateContext->GSSetConstantBuffers(0, 1, &m_pCB_HPMC);
-		pd3dImmediateContext->PSSetConstantBuffers(0, 1, &m_pCB_HPMC);
-		pd3dImmediateContext->GSSetSamplers(0, 1, &m_pSS_Linear);
-		pd3dImmediateContext->GSSetShaderResources(0, 1, &m_pVolSRV);
+		pd3dImmediateContext->GSSetShader(m_pTraversalGS, NULL, 0);
+		pd3dImmediateContext->PSSetShader(m_pRenderPS, NULL, 0);
 		if( m_bFramewire){
 			ID3D11RasterizerState* rs;
 			pd3dImmediateContext->RSGetState(&rs);
 			pd3dImmediateContext->RSSetState(m_pOutRS);
 
-			pd3dImmediateContext->Draw((UINT)m_cbPerFrame.cubeInfo.x * (UINT)m_cbPerFrame.cubeInfo.y * (UINT)m_cbPerFrame.cubeInfo.z, 0);
+			pd3dImmediateContext->Draw(activeCellNum, 0);
 			pd3dImmediateContext->RSSetState(rs);
 			SAFE_RELEASE( rs );
 		}else{
-			pd3dImmediateContext->Draw((UINT)m_cbPerFrame.cubeInfo.x * (UINT)m_cbPerFrame.cubeInfo.y * (UINT)m_cbPerFrame.cubeInfo.z, 0);
+			pd3dImmediateContext->Draw(activeCellNum, 0);
 			//pd3dImmediateContext->Draw(m_cbPerFrame.cubeInfo.x * m_cbPerFrame.cubeInfo.y * m_cbPerFrame.cubeInfo.z, 0);
 		}
-		ID3D11ShaderResourceView* pSRVNULL = NULL;
-		pd3dImmediateContext->GSSetShaderResources(0, 1, &pSRVNULL);
+		pd3dImmediateContext->GSSetShaderResources(0, 2+func_<VOXEL_NUM_X>::value, m_pNullSRV);
+		pd3dImmediateContext->PSSetShaderResources(0, 2+func_<VOXEL_NUM_X>::value, m_pNullSRV);
 	}
 
 	LRESULT HandleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -350,25 +514,7 @@ public:
 		{
 		case WM_KEYDOWN:
 			int nKey = static_cast<int>(wParam);
-
-			if (nKey == '3')
-			{
-				m_cbPerFrame.volSize.w -= 0.01;
-			}
-			if (nKey == '4')
-			{
-				m_cbPerFrame.volSize.w += 0.01;
-			}
-			if (nKey == '5')
-			{
-				m_cbPerFrame.cubeInfo.w *= 1.2;
-				UpdateMCCubeInfo(m_cbPerFrame.cubeInfo.w);
-			}
-			if (nKey == '6')
-			{
-				m_cbPerFrame.cubeInfo.w /= 1.2;
-				UpdateMCCubeInfo(m_cbPerFrame.cubeInfo.w);
-			}if (nKey == 'F')
+			if (nKey == 'F')
 			{
 				m_bFramewire = !m_bFramewire;
 			}
@@ -377,4 +523,4 @@ public:
 
 		return 0;
 	}
-};
+}; 

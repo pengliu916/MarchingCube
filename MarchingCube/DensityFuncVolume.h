@@ -185,11 +185,7 @@ public:
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory( &bd, sizeof(bd) );
 		bd.Usage = D3D11_USAGE_DEFAULT;
-#if FLAT3D
 		bd.ByteWidth = sizeof( short );
-#else
-		bd.ByteWidth = sizeof( short )*m_cbVolumeInfo.voxel_z;
-#endif
 		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 		bd.CPUAccessFlags = 0;
 		V_RETURN(pd3dDevice->CreateBuffer(&bd,NULL,&m_pVB));
@@ -302,7 +298,7 @@ public:
 		SAFE_RELEASE( m_pGS );
 		SAFE_RELEASE( m_pVL );
 		SAFE_RELEASE( m_pVB );
-
+		
 		SAFE_RELEASE( m_pVolSRV );
 		SAFE_RELEASE( m_pVolTex );
 		SAFE_RELEASE( m_pVolRTV );
@@ -330,30 +326,32 @@ public:
 
 	void Render( ID3D11DeviceContext* pd3dImmediateContext )
 	{
-		float ClearColor[2] = { 0.0f,0.0f };
-		pd3dImmediateContext->ClearRenderTargetView( m_pVolRTV, ClearColor );
+		if( m_bAnimated ){
+			float ClearColor[2] = { 0.0f, 0.0f };
+			pd3dImmediateContext->ClearRenderTargetView( m_pVolRTV, ClearColor );
 
-		pd3dImmediateContext->RSSetViewports( 1, &m_cViewport );
-		pd3dImmediateContext->IASetInputLayout(m_pVL);
-		UINT stride = sizeof( short );
-		UINT offset = 0;
-		pd3dImmediateContext->IASetVertexBuffers( 0, 1, &m_pVB, &stride, &offset );
-		pd3dImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
-		pd3dImmediateContext->OMSetRenderTargets( 1, &m_pVolRTV, NULL );
-		pd3dImmediateContext->UpdateSubresource( m_pCB_VolumeInfo, 0, NULL, &m_cbVolumeInfo, 0, 0 );
-		pd3dImmediateContext->UpdateSubresource( m_pCB_Balls, 0, NULL, &m_cbBalls, 0, 0 );
+			pd3dImmediateContext->RSSetViewports( 1, &m_cViewport );
+			pd3dImmediateContext->IASetInputLayout( m_pVL );
+			UINT stride = sizeof( short );	
+			UINT offset = 0;
+			pd3dImmediateContext->IASetVertexBuffers( 0, 1, &m_pVB, &stride, &offset );
+			pd3dImmediateContext->IASetPrimitiveTopology( D3D11_PRIMITIVE_TOPOLOGY_POINTLIST );
+			pd3dImmediateContext->OMSetRenderTargets( 1, &m_pVolRTV, NULL );
+			pd3dImmediateContext->UpdateSubresource( m_pCB_VolumeInfo, 0, NULL, &m_cbVolumeInfo, 0, 0 );
+			pd3dImmediateContext->UpdateSubresource( m_pCB_Balls, 0, NULL, &m_cbBalls, 0, 0 );
 
-		pd3dImmediateContext->VSSetShader( m_pVS, NULL, 0 );
-		pd3dImmediateContext->GSSetShader(m_pGS,NULL,0);
-		pd3dImmediateContext->PSSetShader( m_pPS, NULL, 0 );
-		pd3dImmediateContext->GSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
-		pd3dImmediateContext->PSSetConstantBuffers( 1, 1, &m_pCB_Balls );
+			pd3dImmediateContext->VSSetShader( m_pVS, NULL, 0 );
+			pd3dImmediateContext->GSSetShader( m_pGS, NULL, 0 );
+			pd3dImmediateContext->PSSetShader( m_pPS, NULL, 0 );
+			pd3dImmediateContext->GSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
+			pd3dImmediateContext->PSSetConstantBuffers( 1, 1, &m_pCB_Balls );
 #if FLAT3D
-		pd3dImmediateContext->PSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
-		pd3dImmediateContext->Draw( 1, 0);
+			pd3dImmediateContext->PSSetConstantBuffers( 0, 1, &m_pCB_VolumeInfo );
+			pd3dImmediateContext->Draw( 1, 0);
 #else
-		pd3dImmediateContext->Draw(m_cbVolumeInfo.voxel_z, 0);
+			pd3dImmediateContext->Draw( m_cbVolumeInfo.voxel_z, 0 );
 #endif
+		}
 	}
 
 	LRESULT HandleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)

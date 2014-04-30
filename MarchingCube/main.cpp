@@ -13,11 +13,13 @@
 #include "MultiTexturePresenter.h"
 #include "DensityFuncVolume.h"
 #include "RayCast.h"
+#include "MarchingCube.h"
 #include "HistoPyramidMC.h"
 
 MultiTexturePresenter			multiTexture = MultiTexturePresenter( 1, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
 DensityFuncVolume				densityVolume = DensityFuncVolume( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z );
 RayCast							rayCaster = RayCast( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, true );
+//MarchingCube					marchingCube = MarchingCube(XMFLOAT4(VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, VOXEL_SIZE));
 HistoPyramidMC					marchingCube = HistoPyramidMC(XMFLOAT4(VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, VOXEL_SIZE));
 
 //--------------------------------------------------------------------------------------
@@ -202,7 +204,7 @@ int WINAPI wWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdL
 	Initial();
 
     // Only require 10-level hardware
-    DXUTCreateDevice( D3D_FEATURE_LEVEL_10_0, true, 640, 480 );
+    DXUTCreateDevice( D3D_FEATURE_LEVEL_11_0, true, 640, 480 );
     DXUTMainLoop(); // Enter into the DXUT ren  der loop
 
     // Perform any application-level cleanup here
