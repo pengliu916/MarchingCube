@@ -7,22 +7,22 @@
 #include "SDKmisc.h"
 
 #include "Header.h"
-
+#include <stdexcept>
 using namespace DirectX;
 
 // Compile time constant(log2)
 template<size_t N>
 struct log2_{
-	enum{ value = 1 + log2_<N/2>::value};
+	enum{ value = 1 + log2_<(N + 1) / 2>::value };
 };
 template<>
-struct log2_< 1 >{
-	enum{ value = 0};
+struct log2_ < 1 > {
+	enum{ value = 0 };
 };
 // Compile time constant(log2 + 1)
-template<size_t N, size_t S=1>
+template<size_t N, size_t S = 1>
 struct func_{
-	enum{ value = S + log2_<N>::value};
+	enum{ value = S + log2_<N>::value };
 };
 
 struct CB_HPMC_Init{
@@ -78,8 +78,8 @@ public:
 	ID3D11InputLayout*				m_pPassVL;
 	ID3D11Buffer*					m_pPassVB;
 
-	//Vedio memory resource for HPMC pass
-	ID3D11ShaderResourceView*		m_pNullSRV[func_<VOXEL_NUM_X,3>::value];
+	//Video memory resource for HPMC pass
+	ID3D11ShaderResourceView*		m_pNullSRV[func_<VOXEL_NUM_X, 3>::value];
 	ID3D11ShaderResourceView*		m_pHistoPyramidSRV[func_<VOXEL_NUM_X>::value];
 	ID3D11RenderTargetView*			m_pHistoPyramidRTV[func_<VOXEL_NUM_X>::value];
 	ID3D11Texture3D*				m_pHistoPyramidTex[func_<VOXEL_NUM_X>::value];
@@ -92,13 +92,13 @@ public:
 	bool							m_bFramewire;
 
 	HistoPyramidMC(XMFLOAT4 volumeTexInfo, bool RTTexture = false,
-		UINT txWidth = SUB_TEXTUREWIDTH, UINT txHeight = SUB_TEXTUREHEIGHT)
+				   UINT txWidth = SUB_TEXTUREWIDTH, UINT txHeight = SUB_TEXTUREHEIGHT)
 	{
 		m_cbInit.cb_f4VolInfo = volumeTexInfo;
 		m_cbInit.cb_f4VolInfo.w = 1;
 		m_cbInit.cb_f4HPMCInfo = volumeTexInfo;
-		m_cbReduct.cb_i4RTReso = XMINT4(round(volumeTexInfo.x),round(volumeTexInfo.y),
-										 round(volumeTexInfo.z),0);
+		m_cbReduct.cb_i4RTReso = XMINT4(round(volumeTexInfo.x), round(volumeTexInfo.y),
+										round(volumeTexInfo.z), 0);
 		m_uRTwidth = txWidth;
 		m_uRTheight = txHeight;
 		m_bFramewire = false;
@@ -273,7 +273,7 @@ public:
 		// rasterizer state
 		D3D11_RASTERIZER_DESC rsDesc;
 		rsDesc.FillMode = D3D11_FILL_WIREFRAME;
-		rsDesc.CullMode = D3D11_CULL_BACK;
+		rsDesc.CullMode = D3D11_CULL_NONE;
 		rsDesc.FrontCounterClockwise = TRUE;
 		rsDesc.DepthBias = 0;
 		rsDesc.DepthBiasClamp = 0.0f;
@@ -288,55 +288,55 @@ public:
 		// Create resource for histoPyramid
 		char temp[100];
 		D3D11_TEXTURE3D_DESC TEXDesc;
-		ZeroMemory(&TEXDesc,sizeof(TEXDesc));
+		ZeroMemory(&TEXDesc, sizeof(TEXDesc));
 		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc;
-		ZeroMemory( &SRVDesc, sizeof( SRVDesc ));
+		ZeroMemory(&SRVDesc, sizeof(SRVDesc));
 		D3D11_RENDER_TARGET_VIEW_DESC RTVDesc;
-		ZeroMemory( &RTVDesc, sizeof( RTVDesc ));
-		for( int i = 0; i < func_<VOXEL_NUM_X>::value; ++i){
-			TEXDesc.Width = ceil((float)VOXEL_NUM_X / pow(2,i));
-			TEXDesc.Height = ceil((float)VOXEL_NUM_Y / pow(2,i));
-			TEXDesc.Depth = ceil((float)VOXEL_NUM_Z / pow(2,i));
+		ZeroMemory(&RTVDesc, sizeof(RTVDesc));
+		for (int i = 0; i < func_<VOXEL_NUM_X>::value; ++i){
+			TEXDesc.Width = ceil((float)VOXEL_NUM_X / pow(2, i));
+			TEXDesc.Height = ceil((float)VOXEL_NUM_Y / pow(2, i));
+			TEXDesc.Depth = ceil((float)VOXEL_NUM_Z / pow(2, i));
 			TEXDesc.MipLevels = 1;
 			TEXDesc.Format = DXGI_FORMAT_R32_UINT;
 			TEXDesc.Usage = D3D11_USAGE_DEFAULT;
 			TEXDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 			TEXDesc.CPUAccessFlags = 0;
 			TEXDesc.MiscFlags = 0;
-			V_RETURN( pd3dDevice->CreateTexture3D( &TEXDesc, NULL, &m_pHistoPyramidTex[i]) );
-			sprintf_s(temp,"m_pHistoPyramidTex[%d]",i);
-			DXUT_SetDebugName( m_pHistoPyramidTex[i],temp );
+			V_RETURN(pd3dDevice->CreateTexture3D(&TEXDesc, NULL, &m_pHistoPyramidTex[i]));
+			sprintf_s(temp, "m_pHistoPyramidTex[%d]", i);
+			DXUT_SetDebugName(m_pHistoPyramidTex[i], temp);
 
 			SRVDesc.Format = TEXDesc.Format;
 			SRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
 			SRVDesc.Texture3D.MostDetailedMip = 0;
 			SRVDesc.Texture3D.MipLevels = 1;
-			V_RETURN( pd3dDevice->CreateShaderResourceView( m_pHistoPyramidTex[i],&SRVDesc,&m_pHistoPyramidSRV[i]));
+			V_RETURN(pd3dDevice->CreateShaderResourceView(m_pHistoPyramidTex[i], &SRVDesc, &m_pHistoPyramidSRV[i]));
 			//V_RETURN( pd3dDevice->CreateShaderResourceView( m_pHistoPyramidTex[i],0,&m_pHistoPyramidSRV[i]));
-			sprintf_s(temp, "m_pHistoPyramidSRV[%d]",i);
-			DXUT_SetDebugName( m_pHistoPyramidSRV[i],temp);
+			sprintf_s(temp, "m_pHistoPyramidSRV[%d]", i);
+			DXUT_SetDebugName(m_pHistoPyramidSRV[i], temp);
 			m_pNullSRV[i] = NULL;
-			
+
 			RTVDesc.Format = TEXDesc.Format;
 			RTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
 			RTVDesc.Texture3D.FirstWSlice = 0;
 			RTVDesc.Texture3D.MipSlice = 0;
-			RTVDesc.Texture3D.WSize = ceil((float)VOXEL_NUM_Z / pow(2,i));
-			V_RETURN( pd3dDevice->CreateRenderTargetView( m_pHistoPyramidTex[i],&RTVDesc,&m_pHistoPyramidRTV[i]));
+			RTVDesc.Texture3D.WSize = ceil((float)VOXEL_NUM_Z / pow(2, i));
+			V_RETURN(pd3dDevice->CreateRenderTargetView(m_pHistoPyramidTex[i], &RTVDesc, &m_pHistoPyramidRTV[i]));
 			//V_RETURN( pd3dDevice->CreateRenderTargetView( m_pHistoPyramidTex[i],0,&m_pHistoPyramidRTV[i]));
-			sprintf_s(temp, "m_pHistoPyramidRTV[%d]",i);
-			DXUT_SetDebugName( m_pHistoPyramidRTV[i],temp);
+			sprintf_s(temp, "m_pHistoPyramidRTV[%d]", i);
+			DXUT_SetDebugName(m_pHistoPyramidRTV[i], temp);
 		}
-		m_pNullSRV[func_<VOXEL_NUM_X,1>::value]=NULL;
-		m_pNullSRV[func_<VOXEL_NUM_X,2>::value]=NULL;
+		m_pNullSRV[func_<VOXEL_NUM_X, 1>::value] = NULL;
+		m_pNullSRV[func_<VOXEL_NUM_X, 2>::value] = NULL;
 
 		// Create texture for CPU to read back # of active cell;
 		TEXDesc.Usage = D3D11_USAGE_STAGING;
 		TEXDesc.BindFlags = 0;
 		TEXDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		V_RETURN( pd3dDevice->CreateTexture3D( &TEXDesc, NULL, &m_pHPTopTex))
+		V_RETURN(pd3dDevice->CreateTexture3D(&TEXDesc, NULL, &m_pHPTopTex))
 
-		m_Viewport.Width = (float)m_uRTwidth;
+			m_Viewport.Width = (float)m_uRTwidth;
 		m_Viewport.Height = (float)m_uRTheight;
 		m_Viewport.MinDepth = 0.0f;
 		m_Viewport.MaxDepth = 1.0f;
@@ -381,7 +381,7 @@ public:
 		SAFE_RELEASE(m_pOutDSSView);
 		SAFE_RELEASE(m_pOutDSState);
 
-		for( int i=0;i<func_<VOXEL_NUM_X>::value; ++i){
+		for (int i = 0; i < func_<VOXEL_NUM_X>::value; ++i){
 			SAFE_RELEASE(m_pHistoPyramidSRV[i]);
 			SAFE_RELEASE(m_pHistoPyramidTex[i]);
 			SAFE_RELEASE(m_pHistoPyramidRTV[i]);
@@ -401,11 +401,11 @@ public:
 	UINT BuildHP(ID3D11DeviceContext* pd3dImmediateContext)
 	{
 		//pd3dImmediateContext->VSSetShader(m_pPassVS, NULL,0);
-		pd3dImmediateContext->OMSetRenderTargets(1,&m_pHistoPyramidRTV[0],NULL);
+		pd3dImmediateContext->OMSetRenderTargets(1, &m_pHistoPyramidRTV[0], NULL);
 		pd3dImmediateContext->PSSetShaderResources(0, 1, &m_pVolSRV);
-		pd3dImmediateContext->PSSetSamplers(0,1,&m_pSS_Linear);
-		pd3dImmediateContext->GSSetShader(m_pVolSliceNorGS, NULL,0);
-		pd3dImmediateContext->PSSetShader(m_pHPMCBasePS,NULL,0);
+		pd3dImmediateContext->PSSetSamplers(0, 1, &m_pSS_Linear);
+		pd3dImmediateContext->GSSetShader(m_pVolSliceNorGS, NULL, 0);
+		pd3dImmediateContext->PSSetShader(m_pHPMCBasePS, NULL, 0);
 		m_cbReduct.cb_i4RTReso.x = VOXEL_NUM_X;
 		m_cbReduct.cb_i4RTReso.y = VOXEL_NUM_Y;
 		m_cbReduct.cb_i4RTReso.z = VOXEL_NUM_Z;
@@ -416,34 +416,34 @@ public:
 		vp.MinDepth = 0.0f;
 		vp.MaxDepth = 1.0f;
 		vp.TopLeftX = 0;
-		vp.TopLeftY = 0; 
-		pd3dImmediateContext->RSSetViewports(1,&vp);
-		pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Reduct,0,NULL,&m_cbReduct,0,0);
-		pd3dImmediateContext->Draw(VOXEL_NUM_Z,0);
+		vp.TopLeftY = 0;
+		pd3dImmediateContext->RSSetViewports(1, &vp);
+		pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC_Reduct, 0, NULL, &m_cbReduct, 0, 0);
+		pd3dImmediateContext->Draw(VOXEL_NUM_Z, 0);
 
-		pd3dImmediateContext->GSSetShader(m_pVolSliceGS,NULL,0);
-		for( int i=1; i<func_<VOXEL_NUM_X>::value; ++i){
-			m_cbReduct.cb_i4RTReso.x = ceil((float)VOXEL_NUM_X / pow(2,i));
-			m_cbReduct.cb_i4RTReso.y = ceil((float)VOXEL_NUM_Y / pow(2,i));
-			m_cbReduct.cb_i4RTReso.z = ceil((float)VOXEL_NUM_Z / pow(2,i));
+		pd3dImmediateContext->GSSetShader(m_pVolSliceGS, NULL, 0);
+		for (int i = 1; i < func_<VOXEL_NUM_X>::value; ++i){
+			m_cbReduct.cb_i4RTReso.x = ceil((float)VOXEL_NUM_X / pow(2, i));
+			m_cbReduct.cb_i4RTReso.y = ceil((float)VOXEL_NUM_Y / pow(2, i));
+			m_cbReduct.cb_i4RTReso.z = ceil((float)VOXEL_NUM_Z / pow(2, i));
 			vp.Width = m_cbReduct.cb_i4RTReso.x;
 			vp.Height = m_cbReduct.cb_i4RTReso.y;
-			pd3dImmediateContext->RSSetViewports(1,&vp);
-			pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Reduct,0,NULL,&m_cbReduct,0,0);
-			pd3dImmediateContext->OMSetRenderTargets( 1, &m_pHistoPyramidRTV[i],NULL);
-			pd3dImmediateContext->PSSetShaderResources(1,1,&m_pHistoPyramidSRV[i-1]);
-			if(i==1)
-				pd3dImmediateContext->PSSetShader(m_pReductionBasePS,NULL,0);
+			pd3dImmediateContext->RSSetViewports(1, &vp);
+			pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC_Reduct, 0, NULL, &m_cbReduct, 0, 0);
+			pd3dImmediateContext->OMSetRenderTargets(1, &m_pHistoPyramidRTV[i], NULL);
+			pd3dImmediateContext->PSSetShaderResources(1, 1, &m_pHistoPyramidSRV[i - 1]);
+			if (i == 1)
+				pd3dImmediateContext->PSSetShader(m_pReductionBasePS, NULL, 0);
 			else
-				pd3dImmediateContext->PSSetShader(m_pReductionPS,NULL,0);
-			pd3dImmediateContext->Draw(m_cbReduct.cb_i4RTReso.z,0);
+				pd3dImmediateContext->PSSetShader(m_pReductionPS, NULL, 0);
+			pd3dImmediateContext->Draw(m_cbReduct.cb_i4RTReso.z, 0);
 		}
 
-		pd3dImmediateContext->CopyResource(m_pHPTopTex,m_pHistoPyramidTex[func_<VOXEL_NUM_X>::value - 1]);
+		pd3dImmediateContext->CopyResource(m_pHPTopTex, m_pHistoPyramidTex[func_<VOXEL_NUM_X>::value - 1]);
 		D3D11_MAPPED_SUBRESOURCE subresource;
-		pd3dImmediateContext->Map(m_pHPTopTex,D3D11CalcSubresource(0,0,1),D3D11_MAP_READ,0,&subresource);
+		pd3dImmediateContext->Map(m_pHPTopTex, D3D11CalcSubresource(0, 0, 1), D3D11_MAP_READ, 0, &subresource);
 		UINT num = *reinterpret_cast<UINT*>(subresource.pData);
-		pd3dImmediateContext->Unmap(m_pHPTopTex,D3D11CalcSubresource(0,0,1));
+		pd3dImmediateContext->Unmap(m_pHPTopTex, D3D11CalcSubresource(0, 0, 1));
 		return num;
 	}
 
@@ -456,7 +456,7 @@ public:
 		pd3dImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
 		pd3dImmediateContext->GSSetSamplers(0, 1, &m_pSS_Linear);
 		pd3dImmediateContext->VSSetShader(m_pPassVS, NULL, 0);
-		pd3dImmediateContext->UpdateSubresource( m_pCB_HPMC_Init, 0,NULL,&m_cbInit,0,0);
+		pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC_Init, 0, NULL, &m_cbInit, 0, 0);
 		pd3dImmediateContext->GSSetConstantBuffers(0, 1, &m_pCB_HPMC_Init);
 		pd3dImmediateContext->GSSetConstantBuffers(1, 1, &m_pCB_HPMC_Frame);
 		pd3dImmediateContext->GSSetConstantBuffers(2, 1, &m_pCB_HPMC_Reduct);
@@ -467,8 +467,8 @@ public:
 		UINT activeCellNum = BuildHP(pd3dImmediateContext);
 
 		pd3dImmediateContext->OMSetRenderTargets(1, &m_pOutRTV, m_pOutDSSView);
-		pd3dImmediateContext->GSSetShaderResources(2,func_<VOXEL_NUM_X>::value,m_pHistoPyramidSRV);
-		pd3dImmediateContext->GSSetShaderResources(0,1,&m_pVolSRV);
+		pd3dImmediateContext->GSSetShaderResources(2, func_<VOXEL_NUM_X>::value, m_pHistoPyramidSRV);
+		pd3dImmediateContext->GSSetShaderResources(0, 1, &m_pVolSRV);
 
 		XMMATRIX m_Proj = m_Camera.GetProjMatrix();
 		XMMATRIX m_View = m_Camera.GetViewMatrix();
@@ -490,20 +490,20 @@ public:
 		pd3dImmediateContext->RSSetViewports(1, &m_Viewport);
 		pd3dImmediateContext->GSSetShader(m_pTraversalGS, NULL, 0);
 		pd3dImmediateContext->PSSetShader(m_pRenderPS, NULL, 0);
-		if( m_bFramewire){
+		if (m_bFramewire){
 			ID3D11RasterizerState* rs;
 			pd3dImmediateContext->RSGetState(&rs);
 			pd3dImmediateContext->RSSetState(m_pOutRS);
 
 			pd3dImmediateContext->Draw(activeCellNum, 0);
 			pd3dImmediateContext->RSSetState(rs);
-			SAFE_RELEASE( rs );
-		}else{
+			SAFE_RELEASE(rs);
+		} else{
 			pd3dImmediateContext->Draw(activeCellNum, 0);
 			//pd3dImmediateContext->Draw(m_cbPerFrame.cubeInfo.x * m_cbPerFrame.cubeInfo.y * m_cbPerFrame.cubeInfo.z, 0);
 		}
-		pd3dImmediateContext->GSSetShaderResources(0, 2+func_<VOXEL_NUM_X>::value, m_pNullSRV);
-		pd3dImmediateContext->PSSetShaderResources(0, 2+func_<VOXEL_NUM_X>::value, m_pNullSRV);
+		pd3dImmediateContext->GSSetShaderResources(0, 2 + func_<VOXEL_NUM_X>::value, m_pNullSRV);
+		pd3dImmediateContext->PSSetShaderResources(0, 2 + func_<VOXEL_NUM_X>::value, m_pNullSRV);
 	}
 
 	LRESULT HandleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -523,4 +523,4 @@ public:
 
 		return 0;
 	}
-}; 
+};
