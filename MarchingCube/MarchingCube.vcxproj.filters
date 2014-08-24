@@ -13,9 +13,11 @@
     <ClInclude Include="Header.h" />
     <ClInclude Include="MarchingCube.h" />
     <ClInclude Include="HistoPyramidMC.h" />
+    <ClInclude Include="rply.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="rply.c" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="DensityFuncVolume.fx" />
