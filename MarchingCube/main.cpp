@@ -16,7 +16,7 @@
 #include "MarchingCube.h"
 #include "HistoPyramidMC.h"
 
-MultiTexturePresenter			multiTexture = MultiTexturePresenter( 1, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
+MultiTexturePresenter			multiTexture = MultiTexturePresenter( 2, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
 DensityFuncVolume				densityVolume = DensityFuncVolume( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z );
 RayCast							rayCaster = RayCast( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, true );
 //MarchingCube					marchingCube = MarchingCube(XMFLOAT4(VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, VOXEL_SIZE));
@@ -63,8 +63,8 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	V_RETURN( rayCaster.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	V_RETURN( marchingCube.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	//V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV));
-	V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
-	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV, rayCaster.m_pOutputSRV ));
+	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
+	V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV, rayCaster.m_pOutputSRV ));
 
 
 	ID3D11Debug *d3dDebug = nullptr;
@@ -129,7 +129,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 {
     densityVolume.Render( pd3dImmediateContext );
 	marchingCube.Render( pd3dImmediateContext );
-    //rayCaster.Render( pd3dImmediateContext );
+    rayCaster.Render( pd3dImmediateContext );
 	multiTexture.Render( pd3dImmediateContext );
 }
 

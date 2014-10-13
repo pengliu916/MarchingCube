@@ -217,6 +217,7 @@ float4 PS(PS_INPUT input) : SV_Target
 	// calculate ray intersection with bounding box
 	float tnear, tfar;
 	bool hit = IntersectBox(eyeray, boxMin.xyz, boxMax.xyz , tnear, tfar);
+	if(!hit) discard;
 	if( tnear <= 0 ) tnear = 0;
 
 	// calculate intersection points
@@ -250,7 +251,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		field_pre = field_now;
 		field_now = density;
 		
-		if ( field_now > isoValue && field_pre < isoValue )
+		if ( field_now >= isoValue && field_pre < isoValue )
 		{
 			// For computing the depth
 			surfacePos = P_pre + ( P - P_pre) * (isoValue-field_pre) / (field_now - field_pre);
@@ -289,7 +290,7 @@ float4 PS(PS_INPUT input) : SV_Target
 
 			float3 directionalLight = dLight_col * color * clamp( dot( normal, dLight_dir ), 0, 1 );
 
-			float3 vLight = pLight_pos - surfacePos;
+			float3 vLight = viewPos - surfacePos;
 			float3 halfVect = normalize( vLight - eyeray.d.xyz );
 			float dist = length( vLight ); vLight /= dist;
 			float angleAttn = clamp ( dot ( normal, vLight ), 0, 1 );
@@ -307,7 +308,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		P += PsmallStep;
 		t += tSmallStep;
 	}
-	return float4( 1, 1, 1, 0 ) * 0.05;       
+	return float4( 1, 1, 1, 0 ) * 0.01;       
 }
 
 
