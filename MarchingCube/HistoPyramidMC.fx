@@ -554,19 +554,19 @@ PassVS_OUT PassVS(uint vertexID : SV_VertexID){// Pass through VS
 void VolSliceNorGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, inout TriangleStream<SliceGS_OUT> triStream){
 	SliceGS_OUT output;
 	output.SV_Pos = float4(-1.0f, 1.0f, 0.0f, 1.0f);
-	output.VolCoord = float4(0.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);// the half pix offset still exist when access texture3D(only z)
+	output.VolCoord = float4(0.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);// the half pix offset still exist when access texture3D(only z)
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 	output.SV_Pos = float4(-1.0f, -1.0f, 0.0f, 1.0f);
-	output.VolCoord = float4(0.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
+	output.VolCoord = float4(0.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, 1.0f, 0.0f, 1.0f);
-	output.VolCoord = float4(1.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
+	output.VolCoord = float4(1.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, -1.0f, 0.0f, 1.0f);
-	output.VolCoord = float4(1.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
+	output.VolCoord = float4(1.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 }
@@ -775,10 +775,10 @@ uint HPMCBasePS(SliceGS_OUT input) : SV_Target{
 	for (int i = 0; i < 8; ++i){
 		fieldData[i] = g_txVolume.Sample(g_samLinear, input.VolCoord.xyz + halfCube * cb_halfCubeOffset[i]);
 	}
-	uint caseIdx = (uint(fieldData[6].x > cb_f4VolInfo.w) << 7) | (uint(fieldData[7].x > cb_f4VolInfo.w) << 6) |
-		(uint(fieldData[4].x > cb_f4VolInfo.w) << 5) | (uint(fieldData[5].x > cb_f4VolInfo.w) << 4) |
-		(uint(fieldData[2].x > cb_f4VolInfo.w) << 3) | (uint(fieldData[3].x > cb_f4VolInfo.w) << 2) |
-		(uint(fieldData[0].x > cb_f4VolInfo.w) << 1) | (uint(fieldData[1].x > cb_f4VolInfo.w));
+	uint caseIdx = (uint(fieldData[7].x > cb_f4VolInfo.w) << 7) | (uint(fieldData[6].x > cb_f4VolInfo.w) << 6) |
+		(uint(fieldData[5].x > cb_f4VolInfo.w) << 5) | (uint(fieldData[4].x > cb_f4VolInfo.w) << 4) |
+		(uint(fieldData[3].x > cb_f4VolInfo.w) << 3) | (uint(fieldData[2].x > cb_f4VolInfo.w) << 2) |
+		(uint(fieldData[1].x > cb_f4VolInfo.w) << 1) | (uint(fieldData[0].x > cb_f4VolInfo.w));
 	if (caseIdx == 0 || caseIdx == 255) return 0;
 	return caseIdx;
 	//return (uint)1;
