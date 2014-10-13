@@ -126,6 +126,7 @@ float4 PS( PS_INPUT input ) : SV_Target
 	/*if (abs(currentPos.x)<0.4 && abs(currentPos.y)<0.4 && abs(currentPos.z)<0.4 &&
 		abs(currentPos.x)>0.2 && abs(currentPos.y)>0.2 && abs(currentPos.z)>0.2) field.x = 2;*/
 	//if(abs(currentPos.x)+abs(currentPos.y)+abs(currentPos.z)<0.5) field.x=2;
+	//field.yzw = float3(1,1,1); 
 	/*int slice = 48;
 	int tt = currentPos.x*slice;
 	tt=tt%2;

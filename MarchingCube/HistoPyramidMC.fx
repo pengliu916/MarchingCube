@@ -56,7 +56,8 @@ cbuffer initial : register(b0){
 };
 cbuffer perFrame : register(b1){
 	float4 cb_f4ViewPos;
-	matrix cb_mWorldViewProj;
+	matrix cb_mViewProj;
+	matrix cb_mWorld;
 };
 cbuffer perReduction : register(b2){
 	int4 cb_i4RTReso;
@@ -424,9 +425,9 @@ struct VertexInfoNoNor{
 ShadingPS_IN CalIntersectionVertex(VertexInfo Data0, VertexInfo Data1){
 	ShadingPS_IN output;
 	float t = (cb_f4VolInfo.w - Data0.Field.x) / (Data1.Field.x - Data0.Field.x);
-	output.Pos_o = float4(Data0.Pos + t * (Data1.Pos - Data0.Pos), 1);
-	output.Pos = mul(output.Pos_o, cb_mWorldViewProj);
-	output.Nor = normalize(Data0.Nor + t * (Data1.Nor - Data0.Nor));
+	output.Pos_o = mul(float4(Data0.Pos + t * (Data1.Pos - Data0.Pos), 1),cb_mWorld);
+	output.Pos = mul(output.Pos_o, cb_mViewProj);
+	output.Nor = normalize(mul(Data0.Nor + t * (Data1.Nor - Data0.Nor),cb_mWorld));
 	output.Col = float4(Data0.Field.yzw + t * (Data1.Field.yzw - Data0.Field.yzw), 1);
 	return output;
 }
@@ -446,7 +447,7 @@ float3 CalNormal(float3 txCoord){// Compute the normal from gradient
 		g_txVolume.SampleLevel(g_samLinear, txCoord, 0, int3 (0, -1, 0)).x;
 	float depth_dz = g_txVolume.SampleLevel(g_samLinear, txCoord, 0, int3 (0, 0, 1)).x -
 		g_txVolume.SampleLevel(g_samLinear, txCoord, 0, int3 (0, 0, -1)).x;
-	return -normalize(float3 (depth_dx, depth_dy, depth_dz));
+	return -normalize(float3(depth_dx, depth_dy, depth_dz));
 }
 
 void PosInNextLevel(Texture3D<uint> txHPLevel, uint key_idx, inout uint4 p){// p.xyz is current pos, p.w is the sum
@@ -815,7 +816,7 @@ float4 RenderPS(ShadingPS_IN input) : SV_Target
 
 	float3 directionalLight = dLight_col * color * clamp(dot(input.Nor, dLight_dir), 0, 1);
 
-	float3 vLight = pLight_pos - input.Pos_o.xyz;
+	float3 vLight = cb_f4ViewPos.xyz - input.Pos_o.xyz;
 	float3 halfVect = normalize(vLight - normalize(input.Pos_o.xyz - cb_f4ViewPos.xyz));
 	float dist = length(vLight); vLight /= dist;
 	float angleAttn = clamp(dot(input.Nor, vLight), 0, 1);
@@ -824,8 +825,7 @@ float4 RenderPS(ShadingPS_IN input) : SV_Target
 
 	float3 pointLight = pLight_col * color * angleAttn + color * specularAttn;
 
-		float3 col = ambientLight + directionalLight + pointLight;
-		return float4(col, 0);
-	//return float4( 0,1,0, 1 );
+	float3 col = ambientLight + directionalLight + pointLight;
+	return float4(col, 0);
 
 }
