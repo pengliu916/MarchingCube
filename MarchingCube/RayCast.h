@@ -5,13 +5,7 @@
 #include "DXUTcamera.h"
 #include "SDKmisc.h"
 
-#ifndef SUB_TEXTUREWIDTH
-#define SUB_TEXTUREWIDTH 640
-#endif
-
-#ifndef SUB_TEXTUREHEIGHT
-#define SUB_TEXTUREHEIGHT 480
-#endif
+#include "Header.h"
 
 using namespace DirectX;
 
@@ -20,9 +14,17 @@ struct CB_rayCast
 	XMFLOAT4 voxelInfo; // .xyz demension on xyz, .w is voxel size
 	XMFLOAT4 invXYZsize; // is 1.0f / ( voxelRes * voxelSize ); isolevel in .w component
 	XMMATRIX mWorldViewProjection;
+	XMMATRIX mInvWorldView;
 	XMFLOAT4 vViewPos;
+	XMFLOAT2 vWinTR; // half window size in local space
+	XMINT2 vTile_num;
 	XMFLOAT4 boxMin;
 	XMFLOAT4 boxMax;
+};
+
+struct Vertex_Cube
+{
+	XMFLOAT4	pos;
 };
 
 class RayCast
@@ -35,7 +37,7 @@ public:
 	ID3D11GeometryShader*			m_pGS;
 	ID3D11SamplerState*				m_pSS_Linear;
 	ID3D11InputLayout*				m_pVL;
-	ID3D11Buffer*					m_pVB	;
+	ID3D11Buffer*					m_pVB;
 
 	// For render result to a texture
 	D3D11_VIEWPORT					m_mViewport;
@@ -62,6 +64,10 @@ public:
 		m_cbPerFrame.voxelInfo.x = volumeVoxel_x;
 		m_cbPerFrame.voxelInfo.y = volumeVoxel_y;
 		m_cbPerFrame.voxelInfo.z = volumeVoxel_z;
+#if FLAT3D
+		m_cbPerFrame.vTile_num.x = (UINT)ceil(sqrt(volumeVoxel_z));
+		m_cbPerFrame.vTile_num.y = (UINT)ceil(sqrt(volumeVoxel_z));
+#endif
 		m_cbPerFrame.invXYZsize.x = 1.0f / ( volumeVoxel_x * volumeVoxel_size );
 		m_cbPerFrame.invXYZsize.y = 1.0f / ( volumeVoxel_y * volumeVoxel_size );
 		m_cbPerFrame.invXYZsize.z = 1.0f / ( volumeVoxel_z * volumeVoxel_size );
@@ -95,7 +101,7 @@ public:
 		pPSBlob->Release();
 
 		ID3DBlob* pGSBlob = NULL;
-		V_RETURN(DXUTCompileFromFile(L"RayCast.fx", nullptr, "GS", "gs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pGSBlob));
+		V_RETURN(DXUTCompileFromFile(L"RayCast.fx", nullptr, "GS_Quad", "gs_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pGSBlob));
 		V_RETURN(pd3dDevice->CreateGeometryShader(pGSBlob->GetBufferPointer(),pGSBlob->GetBufferSize(),NULL,&m_pGS));
 		DXUT_SetDebugName(m_pGS,"m_pGS");
 		pGSBlob->Release();
@@ -105,6 +111,8 @@ public:
 		V_RETURN(pd3dDevice->CreateInputLayout(inputLayout,ARRAYSIZE(inputLayout),pVSBlob->GetBufferPointer(),pVSBlob->GetBufferSize(),&m_pVL));
 		DXUT_SetDebugName(m_pVL,"m_pVL");
 		pVSBlob->Release();
+
+		//Vertex_Cube* pVertex = new Vertex_Cube[8];
 
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory( &bd, sizeof(bd) );
@@ -240,6 +248,9 @@ public:
 		// Setup the camera's projection parameters
 			float fAspectRatio = m_uRTwidth / ( FLOAT )m_uRTheight;
 			m_Camera.SetProjParams( XM_PI / 4, fAspectRatio, 0.01f, 500.0f );
+			m_cbPerFrame.vWinTR.y = tan(XM_PI/8.0f);
+			m_cbPerFrame.vWinTR.x = m_cbPerFrame.vWinTR.y*fAspectRatio;
+			
 			m_Camera.SetWindow(m_uRTwidth,m_uRTheight );
 			m_Camera.SetButtonMasks( MOUSE_MIDDLE_BUTTON, MOUSE_WHEEL, MOUSE_LEFT_BUTTON );
 	}
@@ -276,10 +287,20 @@ public:
 		XMMATRIX m_View = m_Camera.GetViewMatrix();
 		XMMATRIX m_World =m_Camera.GetWorldMatrix();
 		XMMATRIX m_WorldViewProjection = m_World*m_View*m_Proj;
+		XMVECTOR t;
+
 
 		m_cbPerFrame.mWorldViewProjection = XMMatrixTranspose( m_WorldViewProjection );
+		m_cbPerFrame.mInvWorldView = XMMatrixTranspose( XMMatrixInverse(&t,m_World*m_View));
 		XMStoreFloat4(&m_cbPerFrame.vViewPos,m_Camera.GetEyePt());
-
+/*
+		float x = m_cbPerFrame.vViewPos.x;
+		float y = m_cbPerFrame.vViewPos.y;
+		float z = m_cbPerFrame.vViewPos.z;
+		float dist = sqrt(x*x+y*y+z*z);
+		float fAspectRatio = m_uRTwidth / ( FLOAT )m_uRTheight;
+		m_cbPerFrame.vWinTR.x = tan(XM_PI/4.0f)/dist;
+		m_cbPerFrame.vWinTR.y = m_cbPerFrame.vWinTR.x/fAspectRatio;*/
 		pd3dImmediateContext->UpdateSubresource( m_pCB_rayCast, 0, NULL, &m_cbPerFrame, 0, 0 );
 		
 		float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };

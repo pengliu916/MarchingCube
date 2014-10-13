@@ -1,0 +1,20 @@
+
+
+#define MAX_BALLS	150
+#define BALL_VOLUME_FACTOR 0.5f
+
+// Switch between Flat3D Texture & Volume Texture
+#define FLAT3D	0
+
+#define SUB_TEXTUREWIDTH 1024
+#define SUB_TEXTUREHEIGHT 768
+
+#define VOXEL_SIZE  1.0f / 256
+#define VOXEL_NUM_X 384  // VOXEL_NUM_X >= VOXEL_NUM_Y >= VOXEL_NUM_Z
+#define VOXEL_NUM_Y 384
+#define VOXEL_NUM_Z 256
+#if defined( DEBUG ) || defined( _DEBUG )
+#define COMPILE_FLAG D3DCOMPILE_DEBUG | D3DCOMPILE_ENABLE_STRICTNESS
+#else
+#define COMPILE_FLAG D3DCOMPILE_OPTIMIZATION_LEVEL3
+#endif

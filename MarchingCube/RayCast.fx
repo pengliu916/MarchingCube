@@ -1,5 +1,11 @@
+#include "Header.h"
+
 SamplerState samRaycast : register(s0);
+#if FLAT3D
+Texture2D g_txVolume : register(t0);
+#else
 Texture3D g_txVolume : register(t0);
+#endif
 
 static const float3 aLight_col = float3( 0.01, 0.01, 0.01 );
 static const float3 dLight_col = float3( 0.02, 0.02, 0.02 );
@@ -14,7 +20,10 @@ cbuffer volumeInfo : register( b0 )
 	float4 voxelInfo;
 	float4 inverseXYZsize; // isolevel in .w conponent
 	matrix WorldViewProjection;
+	matrix invWorldView;
 	float4 viewPos;
+	float2 halfWinSize;
+	int2 tile_num;
 	float4 boxMin;
 	float4 boxMax;
 };
@@ -144,7 +153,53 @@ void GS(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStream)
 
 }
 
+[maxvertexcount(4)]
+void GS_Quad(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStream)
+{
+	PS_INPUT output;
+	output.projPos=float4(-1.0f,1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(-halfWinSize.x, halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
 
+	output.projPos=float4(-1.0f,-1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(-halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
+
+	output.projPos=float4(1.0f,1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(halfWinSize.x, halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
+
+	output.projPos=float4(1.0f,-1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
+}
+#if FLAT3D
+float2 local2tex( float3 P)
+{
+	int3 voxel_idx = P / voxelInfo.w + 0.5f + voxelInfo.xyz * 0.5;
+	int2 tile_idx = int2(voxel_idx.z % tile_num.x, voxel_idx.z / tile_num.y);
+	return (tile_idx * voxelInfo.xy + voxel_idx.xy)/(tile_num * voxelInfo.xy);
+}
+float4 samFlat3D( float3 P)
+{
+	float3 fVoxel_idx = P / voxelInfo.w + voxelInfo.xyz * 0.5 - float3(0,0,0.5);
+	int z0_idx = floor(fVoxel_idx.z);
+	int z1_idx = ceil(fVoxel_idx.z);
+	int2 tile_idx = int2(z0_idx % tile_num.x, z0_idx / tile_num.y);
+	float2 texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result0 = g_txVolume.SampleLevel(samRaycast, texCoord, 0);
+	tile_idx = int2(z1_idx % tile_num.x, z1_idx / tile_num.y);
+	texCoord = (tile_idx * voxelInfo.xy + fVoxel_idx.xy) / (tile_num * voxelInfo.xy);
+	float4 result1 = g_txVolume.SampleLevel(samRaycast, texCoord, 0);
+	float s = (fVoxel_idx.z - z0_idx) / (z1_idx - z0_idx);
+	return lerp(result0,result1,s);
+}
+#else
+float3 local2tex( float3 P)
+{
+	return P * inverseXYZsize.xyz + 0.5;
+}
+#endif
 //--------------------------------------------------------------------------------------
 // Pixel Shader
 //--------------------------------------------------------------------------------------
@@ -177,13 +232,18 @@ float4 PS(PS_INPUT input) : SV_Target
 	float3 surfacePos;
 
 	float field_pre ;
-	float field_now = g_txVolume.SampleLevel(samRaycast,P * inverseXYZsize.xyz + 0.5,0).x;
-
+	float field_now = g_txVolume.SampleLevel(samRaycast,local2tex(P),0).x;
 	float isoValue = inverseXYZsize.w;
 	
 	while ( t <= tfar ) {
-		float3 txCoord = P * inverseXYZsize.xyz + 0.5;
-		float4 Field =  g_txVolume.SampleLevel ( samRaycast, txCoord, 0 );
+#if FLAT3D
+		//float2 texCoord = local2tex(P);
+		float4 Field = samFlat3D(P);
+		//float4 Field =  g_txVolume.SampleLevel ( samRaycast, texCoord, 0 );
+#else
+		float3 texCoord = local2tex(P);
+		float4 Field =  g_txVolume.SampleLevel ( samRaycast, texCoord, 0 );
+#endif
 		float density = Field.x;
 		float4 color = float4( Field.yzw, 0 );
 
@@ -193,16 +253,34 @@ float4 PS(PS_INPUT input) : SV_Target
 		if ( field_now > isoValue && field_pre < isoValue )
 		{
 			// For computing the depth
-			surfacePos = P_pre + ( P - P_pre) * (isoValue-field_pre) / (field_now - field_pre);			
-			txCoord = surfacePos * inverseXYZsize.xyz + 0.5;
+			surfacePos = P_pre + ( P - P_pre) * (isoValue-field_pre) / (field_now - field_pre);
 
 			// For computing the normal
-			float depth_dx = g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( 1, 0, 0 ) ).x - 
-								g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( -1, 0, 0 ) ).x;
-			float depth_dy = g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( 0, 1, 0 ) ).x - 
-								g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( 0, -1, 0 ) ).x;
-			float depth_dz = g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( 0, 0, 1 ) ).x - 
-								g_txVolume.SampleLevel ( samRaycast, txCoord, 0, int3 ( 0, 0, -1 ) ).x;
+#if FLAT3D
+			float depth_dx = samFlat3D(surfacePos+voxelInfo.w*float3 ( 1, 0, 0 )).x - samFlat3D(surfacePos+voxelInfo.w*float3 ( -1, 0, 0 )).x;
+			float depth_dy = samFlat3D(surfacePos+voxelInfo.w*float3 ( 0, 1, 0 )).x - samFlat3D(surfacePos+voxelInfo.w*float3 ( 0, -1, 0 )).x;
+			float depth_dz = samFlat3D(surfacePos+voxelInfo.w*float3 ( 0, 0, 1 )).x - samFlat3D(surfacePos+voxelInfo.w*float3 ( 0, 0, -1 )).x;
+			/*float depth_dx = g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( 1, 0, 0 )),0).x - 
+								g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( -1, 0, 0 )),0).x;
+			float depth_dy = g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( 0, 1, 0 )),0).x - 
+								g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( 0, -1, 0 )),0).x;
+			float depth_dz = g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( 0, 0, 1 )),0).x - 
+								g_txVolume.SampleLevel ( samRaycast, local2tex(surfacePos+voxelInfo.w*float3 ( 0, 0, -1 )),0).x;*/
+#else
+			float3 tCoord = local2tex(surfacePos);
+			float depth_dx = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 1, 0, 0 ) /voxelInfo.xyz, 0 ).x - 
+								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( -1, 0, 0 ) /voxelInfo.xyz, 0 ).x;
+			float depth_dy = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 1, 0 ) /voxelInfo.xyz, 0 ).x - 
+								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, -1, 0 ) /voxelInfo.xyz, 0 ).x;
+			float depth_dz = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 0, 1 ) /voxelInfo.xyz, 0 ).x - 
+								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 0, -1 ) /voxelInfo.xyz, 0 ).x;
+			//float depth_dx = g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 1, 0, 0 ) ).x - 
+			//					g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( -1, 0, 0 ) ).x;
+			//float depth_dy = g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 0, 1, 0 ) ).x - 
+			//					g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 0, -1, 0 ) ).x;
+			//float depth_dz = g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 0, 0, 1 ) ).x - 
+			//					g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 0, 0, -1 ) ).x;
+#endif
 			float3 normal = -normalize ( float3 ( depth_dx, depth_dy, depth_dz ) );
 
 
@@ -229,7 +307,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		P += PsmallStep;
 		t += tSmallStep;
 	}
-	return float4( 1, 1, 1, 0 ) * 0.00;       
+	return float4( 1, 1, 1, 0 ) * 0.05;       
 }
 
 
