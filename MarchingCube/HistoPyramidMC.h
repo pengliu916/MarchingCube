@@ -35,6 +35,7 @@ struct CB_HPMC_Init{
 struct CB_HPMC_Frame{
 	XMFLOAT4	cb_f4ViewPos;
 	XMMATRIX	cb_mWorldViewProj;
+	XMMATRIX	cb_mWorld;
 };
 
 struct CB_HPMC_Reduct{
@@ -574,11 +575,12 @@ public:
 		XMMATRIX m_Proj = m_Camera.GetProjMatrix();
 		XMMATRIX m_View = m_Camera.GetViewMatrix();
 		XMMATRIX m_World = m_Camera.GetWorldMatrix();
-		XMMATRIX m_WorldViewProjection = m_World*m_View*m_Proj;
+		XMMATRIX m_ViewProjection = m_View*m_Proj;
 
 		XMVECTOR t;
 
-		m_cbPerFrame.cb_mWorldViewProj = XMMatrixTranspose(m_WorldViewProjection);
+		m_cbPerFrame.cb_mWorldViewProj = XMMatrixTranspose(m_ViewProjection);
+		m_cbPerFrame.cb_mWorld = XMMatrixTranspose(m_World);
 		XMStoreFloat4(&m_cbPerFrame.cb_f4ViewPos, m_Camera.GetEyePt());
 		pd3dImmediateContext->UpdateSubresource(m_pCB_HPMC_Frame, 0, NULL, &m_cbPerFrame, 0, 0);
 
