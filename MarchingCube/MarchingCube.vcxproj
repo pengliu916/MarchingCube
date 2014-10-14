@@ -169,6 +169,7 @@
     <ClInclude Include="MultiTexturePresenter.h" />
     <ClInclude Include="RayCast.h" />
     <ClInclude Include="rply.h" />
+    <ClInclude Include="TiledTextures.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="DensityFuncVolume.fx">

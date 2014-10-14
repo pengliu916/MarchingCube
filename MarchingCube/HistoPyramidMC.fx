@@ -557,12 +557,12 @@ void VolSliceNorGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, i
 	output.VolCoord = float4(0.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);// the half pix offset still exist when access texture3D(only z)
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
-	output.SV_Pos = float4(-1.0f, -1.0f, 0.0f, 1.0f);
-	output.VolCoord = float4(0.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
-	output.SliceIdx = vertexID;
-	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, 1.0f, 0.0f, 1.0f);
 	output.VolCoord = float4(1.0f, 0.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
+	output.SliceIdx = vertexID;
+	triStream.Append(output);
+	output.SV_Pos = float4(-1.0f, -1.0f, 0.0f, 1.0f);
+	output.VolCoord = float4(0.0f, 1.0f, ((float)vertexID + 0.5) / cb_f4HPMCInfo.z, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, -1.0f, 0.0f, 1.0f);
@@ -583,14 +583,14 @@ void VolSliceGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, inou
 	output.VolCoord = float4(0, 0, vertexID, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output); 
-	output.SV_Pos = float4(-1.0f, -1.0f, 0.0f, 1.0f);
-	//output.VolCoord = float4(0, cb_i4RTReso.y, vertexID, 0);
-	output.VolCoord = float4(0, cb_i4RTReso.y, vertexID, 0);
-	output.SliceIdx = vertexID;
-	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, 1.0f, 0.0f, 1.0f);
 	//output.VolCoord = float4(cb_i4RTReso.x, 0, vertexID, 0);
 	output.VolCoord = float4(cb_i4RTReso.x, 0, vertexID, 0);
+	output.SliceIdx = vertexID;
+	triStream.Append(output);
+	output.SV_Pos = float4(-1.0f, -1.0f, 0.0f, 1.0f);
+	//output.VolCoord = float4(0, cb_i4RTReso.y, vertexID, 0);
+	output.VolCoord = float4(0, cb_i4RTReso.y, vertexID, 0);
 	output.SliceIdx = vertexID;
 	triStream.Append(output);
 	output.SV_Pos = float4(1.0f, -1.0f, 0.0f, 1.0f);
@@ -666,7 +666,7 @@ void TraversalGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, ino
 		v1.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append(CalIntersectionVertex(v0, v1));
 
-		endPoints = cb_edgeTable[edges.z];
+		endPoints = cb_edgeTable[edges.y];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
 		v0.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];
@@ -675,7 +675,7 @@ void TraversalGS(point PassVS_OUT vertex[1], uint vertexID : SV_PrimitiveID, ino
 		v1.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.y];
 		triStream.Append(CalIntersectionVertex(v0, v1));
 
-		endPoints = cb_edgeTable[edges.y];
+		endPoints = cb_edgeTable[edges.z];
 		v0.Field = fieldData[endPoints.x];
 		v0.Nor = fieldNormal[endPoints.x];
 		v0.Pos = pos + cb_f4HPMCInfo.w * 0.5f * cb_halfCubeOffset[endPoints.x];

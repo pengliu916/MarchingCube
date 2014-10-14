@@ -10,13 +10,13 @@
 
 
 
-#include "MultiTexturePresenter.h"
+#include "TiledTextures.h"
 #include "DensityFuncVolume.h"
 #include "RayCast.h"
 #include "MarchingCube.h"
 #include "HistoPyramidMC.h"
 
-MultiTexturePresenter			multiTexture = MultiTexturePresenter( 2, true, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT );
+TiledTextures					multiTexture = TiledTextures();
 DensityFuncVolume				densityVolume = DensityFuncVolume( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z );
 RayCast							rayCaster = RayCast( VOXEL_SIZE, VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, true );
 //MarchingCube					marchingCube = MarchingCube(XMFLOAT4(VOXEL_NUM_X, VOXEL_NUM_Y, VOXEL_NUM_Z, VOXEL_SIZE));
@@ -29,6 +29,9 @@ HRESULT Initial()
 { 
 	HRESULT hr = S_OK;
 	V_RETURN( multiTexture.Initial() );
+
+	multiTexture.AddTexture(&marchingCube.m_pOutSRV, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT);
+	multiTexture.AddTexture(&rayCaster.m_pOutputSRV, SUB_TEXTUREWIDTH, SUB_TEXTUREHEIGHT);
 	return hr;
 }
 
@@ -62,9 +65,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 	V_RETURN( densityVolume.CreateResource ( pd3dDevice ));
 	V_RETURN( rayCaster.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
 	V_RETURN( marchingCube.CreateResource ( pd3dDevice, densityVolume.m_pVolSRV ));
-	//V_RETURN( multiTexture.CreateResource( pd3dDevice, rayCaster.m_pOutputSRV));
-	//V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV));
-	V_RETURN( multiTexture.CreateResource( pd3dDevice, marchingCube.m_pOutSRV, rayCaster.m_pOutputSRV ));
+	V_RETURN( multiTexture.CreateResource( pd3dDevice));
 
 
 	ID3D11Debug *d3dDebug = nullptr;
@@ -103,7 +104,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 HRESULT CALLBACK OnD3D11ResizedSwapChain( ID3D11Device* pd3dDevice, IDXGISwapChain* pSwapChain,
                                           const DXGI_SURFACE_DESC* pBackBufferSurfaceDesc, void* pUserContext )
 {
-	multiTexture.Resize();
+	multiTexture.Resize(pd3dDevice, pBackBufferSurfaceDesc);
 	rayCaster.Resize();
 	marchingCube.Resize();
     return S_OK;
@@ -160,7 +161,8 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
                           bool* pbNoFurtherProcessing, void* pUserContext )
 {
-	densityVolume.HandleMessages( hWnd, uMsg, wParam, lParam );
+	multiTexture.HandleMessages(hWnd, uMsg, wParam, lParam);
+	densityVolume.HandleMessages(hWnd, uMsg, wParam, lParam);
 	rayCaster.HandleMessages( hWnd, uMsg, wParam, lParam );
 	marchingCube.HandleMessages( hWnd, uMsg, wParam, lParam );
     return 0;
@@ -232,7 +234,7 @@ int WINAPI wWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdL
 	Initial();
 
     // Only require 10-level hardware
-    DXUTCreateDevice( D3D_FEATURE_LEVEL_11_0, true, 640, 480 );
+    DXUTCreateDevice( D3D_FEATURE_LEVEL_11_0, true, 1280, 800 );
     DXUTMainLoop(); // Enter into the DXUT ren  der loop
 
     // Perform any application-level cleanup here

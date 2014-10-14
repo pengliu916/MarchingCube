@@ -92,12 +92,12 @@ void GS_Quad(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStre
 	output.Pos=mul(float4(-halfWinSize.x, halfWinSize.y,1,1),invWorldView);
 	triStream.Append(output);
 
-	output.projPos=float4(-1.0f,-1.0f,0.01f,1.0f);
-	output.Pos=mul(float4(-halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
-	triStream.Append(output);
-
 	output.projPos=float4(1.0f,1.0f,0.01f,1.0f);
 	output.Pos=mul(float4(halfWinSize.x, halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
+
+	output.projPos=float4(-1.0f,-1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(-halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
 	triStream.Append(output);
 
 	output.projPos=float4(1.0f,-1.0f,0.01f,1.0f);
