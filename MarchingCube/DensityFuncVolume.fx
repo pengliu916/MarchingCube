@@ -125,9 +125,9 @@ float4 PS( PS_INPUT input ) : SV_Target
 	//if (dot(currentPos, currentPos)<0.22 && dot(currentPos, currentPos)>0.1) field.x = 2;
 	/*if (abs(currentPos.x)<0.4 && abs(currentPos.y)<0.4 && abs(currentPos.z)<0.4 &&
 		abs(currentPos.x)>0.2 && abs(currentPos.y)>0.2 && abs(currentPos.z)>0.2) field.x = 2;*/
-	if(abs(currentPos.x)+(currentPos.y)+abs(currentPos.z)<0.5) field.x=2;
+	/*if(abs(currentPos.x)+(currentPos.y)+abs(currentPos.z)<0.5) field.x=2;
 	field.yzw = float3(1,1,1); 
-	if(currentPos.y > 0) field.y = 0;
+	if(currentPos.y > 0) field.y = 0;*/
 	//field.y = (currentPos.y+1.f)/2.f;
 	/*int slice = 48;
 	int tt = currentPos.x*slice;
@@ -137,11 +137,11 @@ float4 PS( PS_INPUT input ) : SV_Target
 	int kk = currentPos.z*slice;
 	kk = kk % 2;
 	if(tt) field.x=2;*/
-	/*for( uint i = 0; i < (uint)numOfBalls; i++ ){
+	for( uint i = 0; i < (uint)numOfBalls; i++ ){
 		float density =  Ball( currentPos, balls[i].xyz, balls[i].w  );
 		field.x += density;
 		field.yzw += ballsCol[i].xyz * pow( density, 3 ) * 1000;
 	}
-	field.yzw = normalize( field.yzw );*/
+	field.yzw = normalize( field.yzw );
 	return field;
 }
