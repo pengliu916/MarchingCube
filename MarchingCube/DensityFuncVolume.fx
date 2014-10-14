@@ -85,22 +85,22 @@ void GS(point GS_INPUT particles[1], uint primID : SV_PrimitiveID, inout Triangl
 {
 	PS_INPUT output;
 	output.Pos=float4(-1.0f,1.0f,0.0f,1.0f);
-	output.Coord=float3(-voxelResolution.x/2.0,-voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
-	output.PrimID=primID;
-	triStream.Append(output);
-
-	output.Pos=float4(-1.0f,-1.0f,0.0f,1.0f);
 	output.Coord=float3(-voxelResolution.x/2.0,voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
 	output.PrimID=primID;
 	triStream.Append(output);
 
+	output.Pos=float4(-1.0f,-1.0f,0.0f,1.0f);
+	output.Coord=float3(-voxelResolution.x/2.0,-voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
+	output.PrimID=primID;
+	triStream.Append(output);
+
 	output.Pos=float4(1.0f,1.0f,0.0f,1.0f);
-	output.Coord=float3(voxelResolution.x/2.0,-voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
+	output.Coord=float3(voxelResolution.x/2.0,voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
 	output.PrimID=primID;
 	triStream.Append(output);
 
 	output.Pos=float4(1.0f,-1.0f,0.0f,1.0f);
-	output.Coord=float3(voxelResolution.x/2.0,voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
+	output.Coord=float3(voxelResolution.x/2.0,-voxelResolution.y/2.0,(float)primID-voxelResolution.z/2.0+0.5) * voxelSize;
 	output.PrimID=primID;
 	triStream.Append(output);
 }
@@ -127,6 +127,7 @@ float4 PS( PS_INPUT input ) : SV_Target
 		abs(currentPos.x)>0.2 && abs(currentPos.y)>0.2 && abs(currentPos.z)>0.2) field.x = 2;*/
 	if(abs(currentPos.x)+(currentPos.y)+abs(currentPos.z)<0.5) field.x=2;
 	field.yzw = float3(1,1,1); 
+	if(currentPos.y > 0) field.y = 0;
 	//field.y = (currentPos.y+1.f)/2.f;
 	/*int slice = 48;
 	int tt = currentPos.x*slice;
