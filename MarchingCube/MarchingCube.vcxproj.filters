@@ -9,11 +9,11 @@
   <ItemGroup>
     <ClInclude Include="DensityFuncVolume.h" />
     <ClInclude Include="RayCast.h" />
-    <ClInclude Include="MultiTexturePresenter.h" />
     <ClInclude Include="Header.h" />
     <ClInclude Include="MarchingCube.h" />
     <ClInclude Include="HistoPyramidMC.h" />
     <ClInclude Include="rply.h" />
+    <ClInclude Include="TiledTextures.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
@@ -22,7 +22,6 @@
   <ItemGroup>
     <FxCompile Include="DensityFuncVolume.fx" />
     <FxCompile Include="RayCast.fx" />
-    <FxCompile Include="MultiTexturePresenter.fx" />
     <FxCompile Include="MarchingCube.fx" />
     <FxCompile Include="HistoPyramidMC.fx" />
   </ItemGroup>

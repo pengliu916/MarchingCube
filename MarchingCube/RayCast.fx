@@ -84,75 +84,6 @@ GS_INPUT VS( )
 // Geometry Shader
 //--------------------------------------------------------------------------------------
 /*GS for rendering the volume on screen ------------texVolume Read, no half pixel correction*/
-[maxvertexcount(18)]
-void GS(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStream)
-{
-	PS_INPUT output;
-	float3 voxelResolution = voxelInfo.xyz;
-	float voxelSize = voxelInfo.w;
-	output.Pos=float4(1.0f,1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,-1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,-1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,-1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,-1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,-1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-
-	triStream.RestartStrip();
-
-	output.Pos=float4(1.0f,1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-
-	triStream.RestartStrip();
-
-	output.Pos=float4(1.0f,-1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(1.0f,-1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,-1.0f,-1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-	output.Pos=float4(-1.0f,-1.0f,1.0f,1.0f)*float4(voxelResolution*voxelSize/2,1);
-	output.projPos=mul(output.Pos,WorldViewProjection);
-	triStream.Append(output);
-
-}
-
 [maxvertexcount(4)]
 void GS_Quad(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStream)
 {
@@ -161,12 +92,12 @@ void GS_Quad(point GS_INPUT particles[1], inout TriangleStream<PS_INPUT> triStre
 	output.Pos=mul(float4(-halfWinSize.x, halfWinSize.y,1,1),invWorldView);
 	triStream.Append(output);
 
-	output.projPos=float4(-1.0f,-1.0f,0.01f,1.0f);
-	output.Pos=mul(float4(-halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
-	triStream.Append(output);
-
 	output.projPos=float4(1.0f,1.0f,0.01f,1.0f);
 	output.Pos=mul(float4(halfWinSize.x, halfWinSize.y,1,1),invWorldView);
+	triStream.Append(output);
+
+	output.projPos=float4(-1.0f,-1.0f,0.01f,1.0f);
+	output.Pos=mul(float4(-halfWinSize.x, -halfWinSize.y,1,1),invWorldView);
 	triStream.Append(output);
 
 	output.projPos=float4(1.0f,-1.0f,0.01f,1.0f);
@@ -197,7 +128,9 @@ float4 samFlat3D( float3 P)
 #else
 float3 local2tex( float3 P)
 {
-	return P * inverseXYZsize.xyz + 0.5;
+	float3 uv = P * inverseXYZsize.xyz + 0.5;
+	uv.y = 1 - uv.y;
+	return uv;
 }
 #endif
 //--------------------------------------------------------------------------------------
@@ -217,6 +150,7 @@ float4 PS(PS_INPUT input) : SV_Target
 	// calculate ray intersection with bounding box
 	float tnear, tfar;
 	bool hit = IntersectBox(eyeray, boxMin.xyz, boxMax.xyz , tnear, tfar);
+	if(!hit) discard;
 	if( tnear <= 0 ) tnear = 0;
 
 	// calculate intersection points
@@ -242,7 +176,8 @@ float4 PS(PS_INPUT input) : SV_Target
 		//float4 Field =  g_txVolume.SampleLevel ( samRaycast, texCoord, 0 );
 #else
 		float3 texCoord = local2tex(P);
-		float4 Field =  g_txVolume.SampleLevel ( samRaycast, texCoord, 0 );
+		float4 Field = g_txVolume.SampleLevel(samRaycast, texCoord, 0);
+		//float4 Field = g_txVolume.Load( int4(texCoord*voxelInfo.xyz,0));
 #endif
 		float density = Field.x;
 		float4 color = float4( Field.yzw, 0 );
@@ -250,7 +185,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		field_pre = field_now;
 		field_now = density;
 		
-		if ( field_now > isoValue && field_pre < isoValue )
+		if ( field_now >= isoValue && field_pre < isoValue )
 		{
 			// For computing the depth
 			surfacePos = P_pre + ( P - P_pre) * (isoValue-field_pre) / (field_now - field_pre);
@@ -270,8 +205,8 @@ float4 PS(PS_INPUT input) : SV_Target
 			float3 tCoord = local2tex(surfacePos);
 			float depth_dx = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 1, 0, 0 ) /voxelInfo.xyz, 0 ).x - 
 								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( -1, 0, 0 ) /voxelInfo.xyz, 0 ).x;
-			float depth_dy = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 1, 0 ) /voxelInfo.xyz, 0 ).x - 
-								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, -1, 0 ) /voxelInfo.xyz, 0 ).x;
+			float depth_dy = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, -1, 0 ) /voxelInfo.xyz, 0 ).x - 
+								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 1, 0 ) /voxelInfo.xyz, 0 ).x;
 			float depth_dz = g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 0, 1 ) /voxelInfo.xyz, 0 ).x - 
 								g_txVolume.SampleLevel ( samRaycast, tCoord + float3 ( 0, 0, -1 ) /voxelInfo.xyz, 0 ).x;
 			//float depth_dx = g_txVolume.SampleLevel ( samRaycast, tCoord, 0, int3 ( 1, 0, 0 ) ).x - 
@@ -289,7 +224,7 @@ float4 PS(PS_INPUT input) : SV_Target
 
 			float3 directionalLight = dLight_col * color * clamp( dot( normal, dLight_dir ), 0, 1 );
 
-			float3 vLight = pLight_pos - surfacePos;
+			float3 vLight = viewPos - surfacePos;
 			float3 halfVect = normalize( vLight - eyeray.d.xyz );
 			float dist = length( vLight ); vLight /= dist;
 			float angleAttn = clamp ( dot ( normal, vLight ), 0, 1 );
@@ -307,7 +242,7 @@ float4 PS(PS_INPUT input) : SV_Target
 		P += PsmallStep;
 		t += tSmallStep;
 	}
-	return float4( 1, 1, 1, 0 ) * 0.05;       
+	return float4( 1, 1, 1, 0 ) * 0.01;       
 }
 
 

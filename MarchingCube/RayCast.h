@@ -84,6 +84,7 @@ public:
 		XMVECTORF32 vecEye = {0.0f, 0.0f, -2.0f};
 		XMVECTORF32 vecAt = {0.0f, 0.0f, 0.0f};
 		m_Camera.SetViewParams( vecEye, vecAt );
+		m_pOutputSRV = NULL;
 	}
 
 	HRESULT CreateResource( ID3D11Device* pd3dDevice, ID3D11ShaderResourceView*	pVolumeSRV )

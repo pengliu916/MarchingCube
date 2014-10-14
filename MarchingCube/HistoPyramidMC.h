@@ -127,6 +127,7 @@ public:
 		XMVECTORF32 vecEye = { 0.0f, 0.0f, -2.0f };
 		XMVECTORF32 vecAt = { 0.0f, 0.0f, 0.0f };
 		m_Camera.SetViewParams(vecEye, vecAt);
+		m_pOutSRV = NULL;
 	}
 
 	bool OutputMesh(){
@@ -370,7 +371,7 @@ public:
 		D3D11_RASTERIZER_DESC rsDesc;
 		rsDesc.FillMode = D3D11_FILL_WIREFRAME;
 		rsDesc.CullMode = D3D11_CULL_NONE;
-		rsDesc.FrontCounterClockwise = TRUE;
+		rsDesc.FrontCounterClockwise = FALSE;
 		rsDesc.DepthBias = 0;
 		rsDesc.DepthBiasClamp = 0.0f;
 		rsDesc.SlopeScaledDepthBias = 0.0f;
